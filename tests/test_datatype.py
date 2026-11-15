@@ -9,9 +9,9 @@ import time
 
 import pytest
 
-from harness.pictures import psnr
-from harness.results import expect
-from harness.tools import MIB, assert_clean, assert_nothing_left, codec_memory, dt_load, dt_page, status, still_reference, still_rgb
+from vchiqtest.pictures import psnr
+from emu68test.results import expect
+from vchiqtest.tools import MIB, assert_clean, assert_nothing_left, codec_memory, dt_load, dt_page, status, still_reference, still_rgb
 
 ROUTES = [("j1080.jpg", True), ("j4000.jpg", True), ("jodd.jpg", True), ("j420.jpg", False), ("jprog.jpg", False), ("jcmyk.jpg", False)]
 PAGES = [pytest.param(("j1080.jpg", "jodd.jpg"), 10, id="two-sizes"),  # side by side, these ran the codec heap out
@@ -45,10 +45,10 @@ def test_pixels(device, material, baselines, name):
     ref = still_reference(material, name)[:, :, :3]
     h, w = ref.shape[:2]
     rgb, _ = still_rgb("RGB24", raw, w, h)
-    baselines.check(f"datatype_{name}.psnr_db", round(psnr(rgb, ref), 1), higher=True, tolerance=2.0)
+    baselines.check_near(f"datatype_{name}.psnr_db", round(psnr(rgb, ref), 1), higher=True, tolerance=2.0)
     for _ in range(2):  # the time: best of three loads
         us = min(us, dt_load(device, material, name)[2])
-    baselines.check(f"datatype_{name}.us", us, higher=False, tolerance="25%")
+    baselines.check_near(f"datatype_{name}.us", us, higher=False, tolerance="25%")
 
 
 @pytest.mark.parametrize("name,handed", [("j6000.jpg", False), ("jhuge.jpg", False), ("jsplit.jpg", True)])

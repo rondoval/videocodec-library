@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from harness.results import expect
+from emu68test.results import expect
 
 VIDEOCORE_ROWS = 11
 CHAINED = r"; chained YV12 NV12 YUYV UYVY NV21 I422 YVYU VYUY RGBX32 BGRX32; "  # the converter behind a stream decoder

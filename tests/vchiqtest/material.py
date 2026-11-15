@@ -13,8 +13,8 @@ when a recipe changes, so the old cache is left alone and a fresh one is made
 verbatim from the former testdata/hwcycle.py (make_material,
 make_level_material, describe).
 
-    python3 tests/harness/material.py            make everything (about 10 minutes the first time)
-    python3 tests/harness/material.py --only l-  make what matches
+    tests/run.sh material            make everything (about 10 minutes the first time)
+    tests/run.sh material --only l-  make what matches
 """
 from __future__ import annotations
 
@@ -31,8 +31,6 @@ from pathlib import Path
 from typing import Callable
 
 MATERIAL_VERSION = "1"
-
-TESTS = Path(__file__).resolve().parents[1]
 
 # 1920x1080 High, 30 fps, 300 frames (x264), from convertico.com/samples/mp4: free for testing, no attribution required
 SOURCE_NAME = "sample-mp4-1080p-h264-10s.mp4"
@@ -69,9 +67,9 @@ def ffmpeg(*args: str, stdin: bytes | None = None) -> bytes:
     return sh(["ffmpeg", "-v", "error", "-y", *args], input=stdin)
 
 
-def cache_dir(root: Path | None = None) -> Path:
-    """The material cache of this MATERIAL_VERSION under @root (the tests directory by default)."""
-    return (root or TESTS) / ".cache" / f"material-v{MATERIAL_VERSION}"
+def cache_dir(tests: Path) -> Path:
+    """The material cache of this MATERIAL_VERSION under @tests, a suite's tests directory."""
+    return Path(tests) / ".cache" / f"material-v{MATERIAL_VERSION}"
 
 
 def check_source(path: Path) -> None:
@@ -437,7 +435,8 @@ def main(argv: list[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="make the test material into the cache")
     parser.add_argument("--only", help="only the recipes whose name contains this")
-    parser.add_argument("--cache", type=Path, default=cache_dir(), help="the cache directory")
+    parser.add_argument("--cache", type=Path, default=cache_dir(Path.cwd()),
+                        help="the cache directory (default: under the current directory, a suite's tests/)")
     args = parser.parse_args(argv)
     start = time.time()
     made = 0
@@ -456,8 +455,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    if __package__ in (None, ""):  # run as a script: make the package importable
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from harness import material as _self  # noqa: F401
-        sys.exit(_self.main(sys.argv[1:]))
     sys.exit(main(sys.argv[1:]))

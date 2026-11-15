@@ -32,8 +32,11 @@ or `./build.sh --build`. Zero warnings.
 
 From the component root:
 
-- After a harness change: `tests/.venv/bin/pytest tests/unit` (host only).
-- On the hardware: `tests/.venv/bin/pytest tests -m smoke` after a change, the
+- After a change in `tests/vchiqtest/`: `tests/run.sh unit` (host only). The suite builds on
+  emu68-common's harness (`emu68test`, from the stack's install tree): shared test code
+  belongs there, the VideoCore part in `tests/vchiqtest/`, which the build installs for the
+  codec backends' suites.
+- On the hardware: `tests/run.sh -m smoke` after a change, the
   full suite before a release, on the suite's build flavour (developer-guide
   8.2). The machines are shared: the user runs these or says when to. Stop your
   own serial capture and anything polling the Amiga's agent first; the suite
@@ -73,14 +76,14 @@ From the component root:
    library's headers. They ship as source (with `tools/examples.readme`) and
    must build from the archive's `Developer/Examples/videocodec`.
 8. **The rigs print facts, the host judges them.** `tools/vctest/` and
-   `tools/VPUPlay.c` speak the grammar of `tools/common/kv.h`; a test never
+   `tools/VPUPlay.c` speak the grammar of emu68-common's `<emu68test/kv.h>`; a test never
    greps prose. VPUPlay is a measurement rig: users play video with MintVID.
 9. **Test hooks only in test builds.** `vchiq/vchiq_test.h` commands exist only
    with `VCHIQ_TEST_HOOKS` (the stack's `EMU68_VCHIQ_TEST_HOOKS`, which the
    suite's build sets and no release does).
 10. **Tests are pytest functions in `tests/`** (developer-guide 8.7): inputs from
     fixtures, never from another test's side effects; temporary files in
-    `RAM:hw` only; measured numbers through `baselines.check()`; every module
+    `RAM:hw` only; measured numbers through `baselines.check_near()`; every module
     ends in `test_nothing_left`.
 
 ## The firmware: what never to do
@@ -226,4 +229,4 @@ public headers reach the others only through a copy in the build tree
 | `datatype/` | `vcjpeg_class.c`, `vcjpeg_recog.c` (linked on its own, entry first); `descriptor.py` writes and checks the descriptor in the build |
 | `shared/` | `image_info.c` (a still picture's header), `include/auds_proto.h` (the AUDS wire format) |
 | `tools/` | `VCInfo.c`, the examples, `VPUPlay.c`; `vcgrab/` the recorder, its muxer the `mkv` submodule (mkv-writer, tested there); `vctest/` one file per command; `common/` the rigs' shared code, never the examples' |
-| `tests/` | `conftest.py` the fixtures, `harness/`, `test_*.py` one module per area, `unit/` host-only, `baselines.json`; `.cache/`, `.venv/` and `runs/` are not checked in |
+| `tests/` | `run.sh` the entry point, `conftest.py`, `vchiqtest/` the VideoCore fixtures and helpers (installed to `share/vchiq-testing/`), `test_*.py` one module per area, `unit/` host-only, `baselines.json`; `.cache/`, `.venv/`, `.machine/` and `runs/` are not checked in |

@@ -15,9 +15,10 @@
 #   VCShow    the image-call example: the smallest picture viewer (shipped as source)
 #
 # common/ is the tools' shared code: a VCHIQ service as Exec I/O
-# (vchiq_client.c), codecs and formats by name (vc_names.c), the output
-# grammar (kv.c) and the debug-log writer (debugport.c), the task, signal
-# and timer a tool waits with (waiter.c), ReadArgs() defaults (args.h), MD5 (md5.h).
+# (vchiq_client.c), codecs and formats by name (vc_names.c), the debug-log
+# writer (debugport.c), the task, signal and timer a tool waits with
+# (waiter.c), ReadArgs() defaults (args.h), MD5 (md5.h).  The rigs' output
+# grammar is emu68-common's (Emu68Common::kv, <emu68test/kv.h>).
 # The examples link none of it.  The Picasso96 API headers (P96Develop) come
 # with the toolchain image.
 
@@ -35,7 +36,6 @@ set(VCHIQ_TOOL_COMPILE_OPTIONS
 add_library(tools_common STATIC
     common/vchiq_client.c
     common/vc_names.c
-    common/kv.c
     common/debugport.c
     common/waiter.c
     common/pixel_format.c
@@ -43,7 +43,7 @@ add_library(tools_common STATIC
 target_include_directories(tools_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/common)
 target_compile_options(tools_common PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
 # drv_timer and the string helpers from emu68-common
-target_link_libraries(tools_common PUBLIC vchiq_headers videocodec_headers Emu68Common::common)
+target_link_libraries(tools_common PUBLIC vchiq_headers videocodec_headers Emu68Common::common Emu68Common::kv)
 
 add_executable(VCInfo
     VCInfo.c

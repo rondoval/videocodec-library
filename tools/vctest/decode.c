@@ -46,7 +46,7 @@
 #include <string.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <md5.h>
 #include <timing.h>
 #include <vc_names.h>
@@ -317,7 +317,7 @@ static BOOL load_ref(struct decode *d, const char *name)
 	char *text = size > 0 ? AllocVec((ULONG)size + 1u, MEMF_ANY) : NULL;
 	if (text == NULL || Read(f, text, size) != size)
 	{
-		note("cannot read %s\n", name);
+		kv_note("cannot read %s", name);
 		Close(f);
 		if (text != NULL)
 			FreeVec(text);
@@ -440,7 +440,7 @@ static void handle_frame(struct decode *d, const struct VCFrame *f)
 	if (cw <= 0 || ch <= 0 || cx < 0 || cy < 0 || (d->outfmt == VCF_I420 && f->Planes < 3))
 	{
 		kv_str("fail", "a frame without a picture");
-		note("frame %lu: no picture in it (%ldx%ld, %lu planes)\n", d->frames, cw, ch, f->Planes);
+		kv_note("frame %lu: no picture in it (%ldx%ld, %lu planes)", d->frames, cw, ch, f->Planes);
 		d->failed = TRUE;
 		return;
 	}
@@ -457,7 +457,7 @@ static void handle_frame(struct decode *d, const struct VCFrame *f)
 		kv_unum("frame.first.planes", f->Planes);
 		kv_unum("frame.first.pitch", f->Pitch[0]);
 		kv_hex("frame.first.flags", f->Flags);
-		note("first frame: pitch %lu/%lu, offsets %lu/%lu/%lu, pts %lu\n", f->Pitch[0], f->Pitch[1], f->Offset[0], f->Offset[1],
+		kv_note("first frame: pitch %lu/%lu, offsets %lu/%lu/%lu, pts %lu", f->Pitch[0], f->Pitch[1], f->Offset[0], f->Offset[1],
 		     f->Offset[2], (ULONG)f->Pts);
 		d->geometry_printed = TRUE;
 	}
@@ -466,7 +466,7 @@ static void handle_frame(struct decode *d, const struct VCFrame *f)
 	else if (d->flushed && f->Pts < FLUSH_PTS)
 	{
 		if (d->stale++ < 3)
-			note("frame %lu after the flush is stale: pts %lu\n", d->frames, (ULONG)f->Pts);
+			kv_note("frame %lu after the flush is stale: pts %lu", d->frames, (ULONG)f->Pts);
 	}
 	else if (d->flushed)
 		d->after_flush++;
@@ -552,7 +552,7 @@ static void handle_frame(struct decode *d, const struct VCFrame *f)
 	{
 		char a[33];
 		digest_text(d->digest, a);
-		note("frame %lu: md5 %s\n", d->frames, a);
+		kv_note("frame %lu: md5 %s", d->frames, a);
 	}
 	d->frames++;
 }
@@ -695,7 +695,7 @@ static void handle_event(struct decode *d, const struct VCEvent *e)
 		d->failed = TRUE;
 		break;
 	default:
-		note("event %lu\n", e->Event);
+		kv_note("event %lu", e->Event);
 		break;
 	}
 }
@@ -848,7 +848,7 @@ static void decode_loop(struct decode *d)
 				break;
 			case VCIT_Frame:
 				if (d->verbose)
-					note("frame back: %ldx%ld, pts %lu, flags %lx\n", it.u.Frame->Crop.Width, it.u.Frame->Crop.Height, (ULONG)it.u.Frame->Pts,
+					kv_note("frame back: %ldx%ld, pts %lu, flags %lx", it.u.Frame->Crop.Width, it.u.Frame->Crop.Height, (ULONG)it.u.Frame->Pts,
 					     it.u.Frame->Flags);
 				handle_frame(d, it.u.Frame);
 				if (d->keep)
@@ -864,7 +864,7 @@ static void decode_loop(struct decode *d)
 				handle_event(d, &it.u.Event);
 				break;
 			default:
-				note("item %lu?\n", it.Type);
+				kv_note("item %lu?", it.Type);
 				break;
 			}
 		}
@@ -877,7 +877,7 @@ static void decode_loop(struct decode *d)
 		{
 			kv_bool("decode.idle", seen == 0);
 			kv_str("fail", seen == 0 ? "nothing happened" : "stopped");
-			note("nothing happened for %lu ms (or Ctrl-C): %lu frames, input %lu bytes in %lu packets%s\n", (ULONG)IDLE_MS, d->frames,
+			kv_note("nothing happened for %lu ms (or Ctrl-C): %lu frames, input %lu bytes in %lu packets%s", (ULONG)IDLE_MS, d->frames,
 			     d->in_bytes, d->in_buffers, d->have_stream ? "" : " (no stream shape yet: not a stream the decoder takes)");
 			d->failed = TRUE;
 			return;

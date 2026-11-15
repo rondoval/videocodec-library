@@ -16,7 +16,7 @@
 #include <exec/memory.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 
 #include "commands.h"
 

@@ -6,53 +6,15 @@ past it, once in many runs of everything else.  Each level runs a short job of e
 inside its block, whatever does not must fail cleanly, and neither may leave anything on the VPU.
 """
 import re
-import time
-from contextlib import contextmanager
 
 import pytest
 
-from harness.tools import assert_nothing_left, codec_memory, derived, status, vctest
+from vchiqtest.tools import MIB, assert_nothing_left, codec_memory, derived, held, status, vctest
 from test_encoder import H, W, bars
 
-MIB = 1 << 20
-REACH_END = 1 << 30  # the VPU reaches the lowest GiB
-CHIP_END = 2 * MIB
 LEAVE_MIB = (64, 32, 16, 12, 8, 6, 4, 3, 2)
 BACK_SLACK = 6 * MIB  # the codec memory may wander this much between two readings
 OBJECT = re.compile(r"\[videocore\] (?:frame|packet) at ([0-9a-f]{8}), (\d+) bytes")
-
-FREE = (  # every free chunk of a MiB or more that the VPU reaches, as bytes:start:its block's end
-    "/**/ numeric digits 12; call addlib('rexxsupport.library',0,-30,0); sb=c2d(import('00000004'x,4)); call forbid(); "
-    "ml=c2d(import(d2c(sb+322,4),4)); out=''; "
-    "do forever; nxt=c2d(import(d2c(ml,4),4)); if nxt=0 then leave; upper=c2d(import(d2c(ml+24,4),4)); "
-    f"if upper<={REACH_END} & upper>{CHIP_END} then do; c=c2d(import(d2c(ml+16,4),4)); "
-    "do while c~=0; b=c2d(import(d2c(c+4,4),4)); if b>=1048576 then out=out b':'c':'upper; "
-    "c=c2d(import(d2c(c,4),4)); end; end; ml=nxt; end; call permit(); return out"
-)
-
-def free_chunks(device):
-    """Every free chunk the VPU reaches, largest first: (bytes, start, its block's end)."""
-    rc, text = device.ami.arexx(FREE)
-    assert rc == 0, f"ARexx: {rc}: {text}"
-    return sorted((tuple(map(int, w.split(":"))) for w in text.split()), reverse=True)
-
-
-@contextmanager
-def held(device, leave):
-    """All the free RAM the VPU reaches taken but @leave MiB, at the end of the largest chunk: where its block ends."""
-    device.flush()  # the DMA pool keeps arenas between sessions: each level asks for its memory afresh
-    best, _, top = free_chunks(device)[0]
-    assert best > (leave + 64) * MIB, f"only {best >> 20} MiB free in reach: a run before this left too little"
-    job = device.start("VCTest", f"HOLD LEAVE {leave}")
-    try:
-        t0 = time.time()
-        while sum(size for size, _, _ in free_chunks(device)) > (leave + 1) * MIB:  # a hold that falls short proves nothing
-            assert time.time() - t0 < 10, f"the hold left {[(hex(at), size >> 20) for size, at, _ in free_chunks(device)]} MiB"
-            time.sleep(0.2)
-        yield top
-    finally:
-        job.stop()
-        device.delete("RAM:hw/lm.out")
 
 
 def jobs(device, material):

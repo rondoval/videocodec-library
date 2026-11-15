@@ -4,9 +4,9 @@ input and as its output through VC_ConvertImage(), against ffmpeg's conversion o
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg, vyuy_of_uyvy
-from harness.pictures import best_psnr, load_ppm, ref_rgb
-from harness.tools import vctest
+from vchiqtest.material import ffmpeg, vyuy_of_uyvy
+from vchiqtest.pictures import best_psnr, load_ppm, ref_rgb
+from vchiqtest.tools import vctest
 
 # The formats the converter reads beyond the ISP's own six and a camera's YUYV and NV12 (tests/test_images.py), each
 # with its picture: frame0 at 640x480 in that layout (the harness's material)

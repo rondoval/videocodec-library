@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from harness.results import expect
-from harness.tools import codec_memory, status, vctest
+from emu68test.results import expect
+from vchiqtest.tools import codec_memory, status, vctest
 from test_ahi import MODE_16BIT
 
 PRESS_WAIT_S = 1800  # someone has to come to the machine: longer than a test's limit, so these have their own

@@ -28,7 +28,7 @@
 #include <libraries/Picasso96.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <pixel_format.h>
 #include <timing.h>
 
@@ -125,13 +125,13 @@ static void screen_run(struct tool *t, struct Screen *screen, ULONG height, ULON
 		{
 			ScreenToBack(screen);
 			behind = TRUE;
-			note("behind the others\n");
+			kv_note("behind the others");
 		}
 		if (behind && !returned && elapsed >= back + BACK_SECONDS)
 		{
 			ScreenToFront(screen);
 			returned = TRUE;
-			note("in front again\n");
+			kv_note("in front again");
 		}
 		if (noise)
 		{

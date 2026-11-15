@@ -60,7 +60,7 @@
 #include <string.h>
 
 #include <debugport.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <strutil.h>
 
 #include "commands.h"
@@ -212,10 +212,9 @@ int main(void)
 		}
 	}
 
-	kv_init("VCTest", FALSE);
-	kv_str("command", cmd->name);
+	kv_debug_log("VCTest", (const char *)GetArgStr(), FALSE);
+	kv_begin(cmd->name);
 	kv_num("cli", ((struct Process *)FindTask(NULL))->pr_TaskNum);
-	kv_begin((const char *)GetArgStr());
 	rc = RETURN_ERROR;
 	VideoCodecBase = OpenLibrary((CONST_STRPTR)VIDEOCODEC_NAME, 0);
 	if (VideoCodecBase != NULL)
@@ -236,8 +235,7 @@ int main(void)
 	rc = cmd->run(&t, args);
 	waiter_close(&t.waiter);
 out_run:
-	kv_verdict(rc);
-	kv_end(rc);
+	rc = kv_end(rc);
 	if (VideoCodecBase != NULL)
 		CloseLibrary(VideoCodecBase);
 	if (rda_cmd != NULL)

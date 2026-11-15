@@ -1,3 +1,18 @@
+# Release notes - emu68-vchiq-library 0.6
+
+Nothing changes for users: the drivers, the library and the tools work as in 0.5.
+
+- **For developers: the test suite runs on the stack's common harness.** The
+  suite in `tests/` builds on emu68-common's `emu68test` (emu68-common 2.4), and
+  is started with `tests/run.sh`. What is VideoCore's own is the Python package
+  `vchiqtest`, which the build installs to `share/vchiq-testing/` so that a
+  codec driver's suite can use it without this repository's sources.
+- **For developers: the rigs' output.** `VCTest` and `VPUPlay` print through
+  emu68-common's grammar library: each run now also names its `command`, and
+  ends with `checks` and `checks_failed` before the verdict.
+- **The suite keeps the machine's own files.** Before it first replaces a file
+  on the Amiga, it copies the machine's own to `tests/.machine/` on the host.
+
 # Release notes - emu68-vchiq-library 0.5
 
 - **More pixel formats through the VideoCore converter.** Besides I420, the RGB

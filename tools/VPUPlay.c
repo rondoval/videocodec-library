@@ -82,7 +82,7 @@
 #include <libraries/videocodec.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <pixel_format.h>
 #include <waiter.h>
 
@@ -212,7 +212,7 @@ static void fill_input(struct play *p, struct VCPacket *pk)
 		{
 			p->loops++;
 			if (p->verbose)
-				note("loop %lu\n", p->loops);
+				kv_note("loop %lu", p->loops);
 			n = Read(p->file, pk->Data, (LONG)pk->Capacity);
 		}
 	}
@@ -220,6 +220,7 @@ static void fill_input(struct play *p, struct VCPacket *pk)
 	if (n < 0)
 	{
 		PrintFault(IoErr(), (CONST_STRPTR) "read");
+		Flush(Output()); /* the grammar's lines go out through stdio: keep the order */
 		kv_str("fail", "reading the stream failed");
 		p->failed = TRUE;
 		return;
@@ -346,7 +347,7 @@ static BOOL target_apply(struct play *p, const struct target *t)
 		if (p->frame[k] == NULL)
 		{
 			kv_str("fail", "VC_ImportFrame refused a bitmap part");
-			note("the session took no frame over %s %lu\n", t->what, k);
+			kv_note("the session took no frame over %s %lu", t->what, k);
 			return FALSE;
 		}
 		p->frame[k]->UserData = (APTR)(k + 1u); /* its part, read back when it comes full */
@@ -420,7 +421,7 @@ static void flipper_start(struct play *p)
 	                               (ULONG)(LONG)(p->waiter.task->tc_Node.ln_Pri - 1), NP_StackSize, 8192, TAG_DONE);
 	p->flipper_used = p->flipper != NULL;
 	if (p->flipper == NULL)
-		note("no flipper process: flipping inline\n");
+		kv_note("no flipper process: flipping inline");
 }
 
 static void flipper_stop(struct play *p)
@@ -464,7 +465,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (allowed == 0)
 	{
 		kv_str("fail", "the backend writes no Picasso96 format of this depth: another DEPTH");
-		note("the backend writes %s\n", format_names(p->isp_formats, names, sizeof(names)));
+		kv_note("the backend writes %s", format_names(p->isp_formats, names, sizeof(names)));
 		return FALSE;
 	}
 	ULONG id = p96BestModeIDTags(P96BIDTAG_NominalWidth, w, P96BIDTAG_NominalHeight, h, P96BIDTAG_Depth, depth,
@@ -472,7 +473,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (id == 0 || id == (ULONG)INVALID_ID)
 	{
 		kv_str("fail", "no RTG screen mode of this size and depth in a format the backend writes: Picasso96Mode, add one");
-		note("wanted %lux%lu at %lu bits in %s\n", w, h, depth, format_names(allowed, names, sizeof(names)));
+		kv_note("wanted %lux%lu at %lu bits in %s", w, h, depth, format_names(allowed, names, sizeof(names)));
 		return FALSE;
 	}
 	p->screen_w = p96GetModeIDAttr(id, P96IDA_WIDTH);
@@ -496,14 +497,14 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (p->screen == NULL)
 	{
 		kv_str("fail", "the screen did not open, not even one picture high");
-		note("%lu MiB of VRAM for one picture at %lu bits\n",
+		kv_note("%lu MiB of VRAM for one picture at %lu bits",
 		     (p->screen_w * p->screen_h * ((mode_depth + 7u) / 8u) + (1u << 20) - 1u) >> 20, mode_depth);
 		return FALSE;
 	}
 	kv_unum("screen.parts", p->parts);
-	note("screen open: %lu picture heights, %ldx%ld\n", p->parts, (LONG)p->screen->Width, (LONG)p->screen->Height);
+	kv_note("screen open: %lu picture heights, %ldx%ld", p->parts, (LONG)p->screen->Width, (LONG)p->screen->Height);
 	p96RectFill(&p->screen->RastPort, 0, 0, (UWORD)(p->screen_w - 1u), (UWORD)(p->screen_h * p->parts - 1u), 0);
-	note("filled black\n");
+	kv_note("filled black");
 
 	struct BitMap *bm = p->screen->RastPort.BitMap;
 	LONG lock = p96LockBitMap(bm, (UBYTE *)&p->ri, sizeof(p->ri));
@@ -524,7 +525,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (pf == NULL || (p->isp_formats & pixel_format_bit(pf)) == 0)
 	{
 		kv_str("fail", "the bitmap's format is none the backend writes");
-		note("the backend writes %s\n", format_names(p->isp_formats, names, sizeof(names)));
+		kv_note("the backend writes %s", format_names(p->isp_formats, names, sizeof(names)));
 		return FALSE;
 	}
 	if ((pitch / pf->bpp) % 32u != 0 || ((ULONG)p->ri.Memory & 3u) != 0)
@@ -548,7 +549,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	                           p->screen_h, WA_Backdrop, TRUE, WA_Borderless, TRUE, WA_Activate, TRUE, WA_RMBTrap, TRUE,
 	                           WA_IDCMP, IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS, TAG_DONE);
 	if (p->window == NULL)
-		note("no window: stop with Ctrl-C\n");
+		kv_note("no window: stop with Ctrl-C");
 	else
 	{
 		/* no pointer over the picture: the card would also move it with every flip */
@@ -556,7 +557,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 		if (p->blank_pointer != NULL)
 			SetPointer(p->window, p->blank_pointer, 1, 16, 0, 0);
 	}
-	note("window open\n");
+	kv_note("window open");
 	p->shown = 0; /* the top part is on display */
 	return TRUE;
 }
@@ -704,7 +705,7 @@ static BOOL window_setup(struct play *p, ULONG want_w, ULONG want_h, struct targ
 			UnlockPubScreen(NULL, scr);
 			return FALSE;
 		}
-		note("the screen's pixel format %lu is none the backend writes: it writes %s, which Picasso96 converts while copying\n",
+		kv_note("the screen's pixel format %lu is none the backend writes: it writes %s, which Picasso96 converts while copying",
 		     (ULONG)rgb, pf->name);
 	}
 	t->pf = pf;
@@ -841,7 +842,7 @@ static void frame_arrived(struct play *p, struct VCFrame *f)
 	}
 	p->at_session[k] = FALSE;
 	if (p->verbose)
-		note("frame in part %ld, pts %lu, flags %lx\n", k, (ULONG)f->Pts, f->Flags);
+		kv_note("frame in part %ld, pts %lu, flags %lx", k, (ULONG)f->Pts, f->Flags);
 	if (p->failed)
 	{
 		recycle_part(p, k);
@@ -879,7 +880,7 @@ static void show_ready(struct play *p, u32 now)
 		return;
 	}
 	if (p->displayed <= 3 || p->verbose)
-		note("frame %lu: showing part %ld\n", p->displayed, k);
+		kv_note("frame %lu: showing part %ld", p->displayed, k);
 	LONG old = p->shown;
 	p->shown = k;
 	flip_request(p, k, old);
@@ -954,13 +955,13 @@ static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG d
 		p->fps = 30;
 	p->frame_us = 1000000u / p->fps;
 
-	note("decoder told the size; opening the display\n");
+	kv_note("decoder told the size; opening the display");
 	struct target t;
 	for (ULONG i = 0; i < sizeof(t); i++)
 		((UBYTE *)&t)[i] = 0;
 	if (!(p->windowed ? window_setup(p, want_w, want_h, &t) : screen_setup(p, depth, want_w, want_h, &t)))
 		return FALSE;
-	note("display ready; setting the output geometry\n");
+	kv_note("display ready; setting the output geometry");
 	if (!target_apply(p, &t))
 		return FALSE;
 	/* full screen: the top part is on display, the others take the first frames (with one part, that one); a window: the session's own */
@@ -969,7 +970,7 @@ static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG d
 			part_release(p, k);
 	kv_unum("play.fps_set", p->fps);
 	kv_bool("play.fast", p->fast);
-	note("playing at %lu fps%s, %lu %s; %s stops\n", p->fps, p->fast ? " (as fast as it goes)" : "", p->parts,
+	kv_note("playing at %lu fps%s, %lu %s; %s stops", p->fps, p->fast ? " (as fast as it goes)" : "", p->parts,
 	     p->windowed ? "frames" : "bitmap parts", p->windowed ? "the close gadget or any key" : "any key or mouse button");
 	if (!p->windowed)
 		flipper_start(p);
@@ -1101,7 +1102,7 @@ static int play(struct play *p, ULONG depth, ULONG want_w, ULONG want_h)
 			}
 			kv_bool("play.idle", TRUE);
 			kv_str("fail", "nothing happened");
-			note("nothing happened for %lu ms: frames %lu, displayed %lu, ready %lu, in VPU %lu/%lu/%lu\n", (ULONG)IDLE_MS, p->frames,
+			kv_note("nothing happened for %lu ms: frames %lu, displayed %lu, ready %lu, in VPU %lu/%lu/%lu", (ULONG)IDLE_MS, p->frames,
 			     p->displayed, p->ready_n, (ULONG)p->at_session[0], (ULONG)p->at_session[1], (ULONG)p->at_session[2]);
 			p->failed = TRUE;
 			break;
@@ -1195,10 +1196,10 @@ int main(void)
 		PrintFault(IoErr(), (CONST_STRPTR) "VPUPlay");
 		return RETURN_FAIL;
 	}
-	kv_init("VPUPlay", args[ARG_TRACE] != 0);
+	kv_debug_log("VPUPlay", (const char *)GetArgStr(), args[ARG_TRACE] != 0);
+	kv_begin("PLAY");
 	kv_num("cli", ((struct Process *)FindTask(NULL))->pr_TaskNum);
 	kv_str("play.file", (const char *)args[ARG_FILE]);
-	kv_begin((const char *)GetArgStr());
 
 	int rc = RETURN_ERROR;
 	static struct play p;
@@ -1238,6 +1239,7 @@ int main(void)
 	if (p.file == 0)
 	{
 		PrintFault(IoErr(), (CONST_STRPTR)args[ARG_FILE]);
+		Flush(Output()); /* the grammar's lines go out through stdio: keep the order */
 		kv_str("fail", "the stream did not open");
 		goto out;
 	}
@@ -1253,8 +1255,7 @@ int main(void)
 	display_teardown(&p);
 
 out:
-	kv_verdict(rc);
-	kv_end(rc);
+	rc = kv_end(rc);
 	if (p.file != 0)
 		Close(p.file);
 	waiter_close(&p.waiter);

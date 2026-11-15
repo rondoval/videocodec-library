@@ -109,7 +109,10 @@ BOOL vq_open(struct vq_service *s, struct drv_timer *timer, ULONG fourcc, UWORD 
 	{
 		s->error = s->io->iovq_Req.io_Error;
 		if (what != NULL)
+		{
 			Printf((CONST_STRPTR) "open %s: error %ld\n", what, s->error);
+			Flush(Output()); /* the rigs' own lines go out through stdio: keep the order */
+		}
 		s->io->iovq_Req.io_Device = NULL;
 		vq_close(s);
 		return FALSE;
@@ -130,7 +133,10 @@ BOOL vq_open(struct vq_service *s, struct drv_timer *timer, ULONG fourcc, UWORD 
 	for (ULONG k = 0; k < VQ_READS; k++)
 		post_read(s, k);
 	if (what != NULL)
+	{
 		Printf((CONST_STRPTR) "open %s: peer version %ld\n", what, (ULONG)s->io->iovq_PeerVersion);
+		Flush(Output()); /* the rigs' own lines go out through stdio: keep the order */
+	}
 	return TRUE;
 }
 
@@ -181,7 +187,10 @@ BOOL vq_next(struct vq_service *s, UBYTE **data, ULONG *len, ULONG timeout_ms)
 			WaitIO((struct IORequest *)rd);
 			ok = rd->iovq_Req.io_Error == 0 || rd->iovq_Req.io_Error == VQERR_TRUNCATED;
 			if (!ok)
+			{
 				Printf((CONST_STRPTR) "  read: error %ld\n", (LONG)rd->iovq_Req.io_Error);
+				Flush(Output()); /* the rigs' own lines go out through stdio: keep the order */
+			}
 			break;
 		}
 		ULONG sig = Wait((1UL << s->port->mp_SigBit) | tmask | SIGBREAKF_CTRL_C);

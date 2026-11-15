@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from harness.results import expect
-from harness.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
+from emu68test.results import expect
+from vchiqtest.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
 
 BORDERS = (4, 11, 4, 2)  # a Workbench window's left, top, right and bottom borders when nothing better is known
 SETTLE_S = 3  # from a player's start to its screen showing the bars
@@ -45,7 +45,7 @@ def test_full_screen(device, material, baselines, record_property):
     assert r.passed, r.kv.get("fail")
     assert r.num("play.shown") == 300 and r.num("play.parts") == 3
     record_property("late", r.kv.get("play.late"))
-    baselines.check("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
+    baselines.check_near("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
 
 
 def test_full_screen_zero_copy(device, material, driver_log):

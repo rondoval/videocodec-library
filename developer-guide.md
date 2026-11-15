@@ -520,7 +520,7 @@ backend imports them (`SMEM`). `MISALIGN` puts the image calls' pictures 4
 bytes past a cache line, so the VPU cannot write them. `BACKEND name` runs any
 of the codec commands on that backend.
 
-**Output.** The grammar of `tools/common/kv.h`: `format=1` first, then one fact
+**Output.** The grammar of emu68-common's `<emu68test/kv.h>`: `format=1` first, then one fact
 per line as `key=value` (indexed groups by number: `stream.0.width`), prose for
 people indented two spaces, and `PASS` or `FAIL` last. Every run writes
 `[VCTest] begin ...` and `[VCTest] end rc=N` to the debug log, by which the
@@ -656,25 +656,27 @@ print facts and the host judges them (6.3).
 * the machine's serial adapter on `/dev/ttyUSB0` for the tests that read the
   debug log.
 
-Once, the venv (Pillow is not on the host; the suite installs nothing):
+The suite builds on emu68-common's test harness (`emu68test`), which the stack
+build installs to `install/share/emu68-testing/`; `tests/run.sh` finds it there
+and makes `tests/.venv` on its first run from the harness's requirements and
+`tests/requirements.txt` (the suite installs nothing on the host otherwise).
 
 ```sh
-python3 -m venv tests/.venv && tests/.venv/bin/pip install -r tests/requirements.txt
-tests/.venv/bin/python tests/harness/material.py      # the material ahead of time (optional, ten minutes)
+tests/run.sh material                    # the material ahead of time (optional, ten minutes)
 ```
 
 A run, from the component root:
 
 ```sh
-tests/.venv/bin/pytest tests -m smoke                   # one of every binary and path, about six minutes
-tests/.venv/bin/pytest tests                            # everything automatic, about 25 minutes
-tests/.venv/bin/pytest tests -m "not slow"              # without the level probes and the whole still set
-tests/.venv/bin/pytest tests/test_images.py -k jpeg     # pytest's own selection
-tests/.venv/bin/pytest tests --collect-only -q          # the list of tests
-tests/.venv/bin/pytest tests/unit                       # the host-only tests of the harness itself
+tests/run.sh -m smoke                   # one of every binary and path, about six minutes
+tests/run.sh                            # everything automatic, about 25 minutes
+tests/run.sh -m "not slow"              # without the level probes and the whole still set
+tests/run.sh test_images.py -k jpeg     # pytest's own selection
+tests/run.sh --collect-only -q          # the list of tests
+tests/run.sh unit                       # the host-only tests of the suite's own modules
 ```
 
-The options, beside pytest's own (`tests/conftest.py`):
+The options, beside pytest's own (emu68test's plugin and `tests/vchiqtest/plugin.py`):
 
 | Option | Does |
 |---|---|
@@ -683,6 +685,7 @@ The options, beside pytest's own (`tests/conftest.py`):
 | `--install-dir`, `--build-dir` | the stack's; the build dir's `CMakeCache.txt` says the flavour |
 | `--run-dir` | where the run goes (default `tests/runs/<timestamp>`) |
 | `--no-install` | check the installed files against the install tree instead of replacing them |
+| (the install) | the machine's own files are copied to `tests/.machine/<server>/` before the first replacement, and never overwritten there |
 | `--no-reboot` | deselect the tests that reboot |
 | `--listen`, `--hands`, `--profile` | select those tiers (8.2) |
 | `--serial /dev/ttyUSB0\|none` | the debug log's port |
@@ -786,7 +789,7 @@ times), nothing else. What a number means is said where it is checked, in the
 test, with an absolute tolerance or a percentage of the baseline:
 
 ```python
-baselines.check("fullscreen.play.fps", fps, higher=True, tolerance="10%")
+baselines.check_near("fullscreen.play.fps", fps, higher=True, tolerance="10%")
 ```
 
 A value with no baseline for this machine is recorded with a warning.
@@ -807,12 +810,12 @@ output, so the rates stay near a release build's.
 ```sh
 EMU68_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=off -DEMU68_TRACE= -DEMU68_DEBUG= -DEMU68_PROFILE=emu68-vchiq-library" \
     ./scripts/docker-build.sh --target emu68-vchiq-library
-tests/.venv/bin/pytest tests --profile -m profile --update-baselines
+tests/run.sh --profile -m profile --update-baselines
 ```
 
 Each instance reports every 2 s while it works, and once more when a session
 (`[videocore]`) or a unit (`[vchiq]`) closes, as `[prefix] slot: n=.. sum=..us
-avg=..us max=..us`. `tests/harness/perf.py` reads them; emu68-common's
+avg=..us max=..us`. emu68test's `perf.py` reads them; emu68-common's
 `scripts/perf-report.py` reduces a capture by hand.
 
 | Slot | What it times |
@@ -845,7 +848,7 @@ A test is a function in the module of its area. It asks for what it needs:
 |---|---|
 | `device` | the Amiga: `run()` for a rig that speaks the grammar, `run_text()` for VCInfo and the examples, `start()` for a background job, `download()`, `screenshot()`, `window()` |
 | `material` | `.ram(name)` uploads a file once per boot and returns its `RAM:hw` path; `.path(name)` makes it on the host |
-| `baselines` | `check()` (8.5) |
+| `baselines` | `check_near()` (8.5) |
 | `driver_log`, `debuglog` | a slice of the log: `since(mark)`, `.expect()`, `.forbid()`, `.find()` |
 | `artifacts` | the test's directory |
 | `record_property` | a note for the report |
@@ -857,18 +860,18 @@ The rules:
 * temporary files in `RAM:hw` only, deleted by the test; `test_nothing_left`
   catches what is left behind;
 * facts read from the rigs' `key=value` lines, never from prose;
-* measured numbers through `baselines.check()`, verdicts as plain asserts in
+* measured numbers through `baselines.check_near()`, verdicts as plain asserts in
   plain words.
 
-The host-only tests in `tests/unit/` cover the parser, the picture maths, the
-baselines and the material recipes.
+The host-only tests in `tests/unit/` cover the picture maths and the material
+recipes; the parser's and the baselines' are emu68-common's (`tests/` there).
 
 ### 8.8 Test material
 
 Nothing binary is checked in. Everything comes from one sample, convertico's
 `sample-mp4-1080p-h264-10s.mp4` (convertico.com/samples/mp4: free for testing,
 no attribution required; 1920x1080 High, 30 fps, 300 frames with B-frames,
-x264). `tests/harness/material.py` downloads it once into `tests/.cache/source/`
+x264). `tests/vchiqtest/material.py` downloads it once into `tests/.cache/source/`
 and checks its SHA-256 on every use: a changed file is an error, since the clip
 and every baseline come from it. Offline, put the file there by hand.
 
@@ -886,17 +889,17 @@ elementary stream, never from the MP4 (edit lists can drop leading frames).
 JPEG decoding is not bit-exact between decoders, so pictures are compared by
 PSNR.
 
-The rest is made on the host from `clip42` by `tests/harness/material.py`
+The rest is made on the host from `clip42` by `tests/vchiqtest/material.py`
 (ffmpeg, x264, Pillow) into `tests/.cache/material-v<version>/` the first time
 a test needs it, and kept: the converter and encoder inputs, the JPEGs, the
 shape-change and pixel-aspect streams, the H.264 limit probes, the still
 pictures of every format with Pillow's decode of each as the reference
-(`tests/harness/stills.py`), and the colour-bar pattern the screenshot tests
+(`tests/vchiqtest/stills.py`), and the colour-bar pattern the screenshot tests
 judge. The VPU's H.264 output keeps the limited range, 16 to 235, so a bar
 passes at either rendering. Two inputs the Amiga makes itself, once per boot:
 one frame and thirty frames of clip42 decoded to raw I420.
 
 The ffmpeg command lines are the test material: a changed recipe gets a new
 `MATERIAL_VERSION`, so the old cache is left alone.
-`tests/.venv/bin/python tests/harness/material.py` makes everything ahead of a
+`tests/run.sh material` makes everything ahead of a
 run (about ten minutes, mostly x264); `--only l-` makes what matches.

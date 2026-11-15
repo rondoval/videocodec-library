@@ -5,10 +5,10 @@ import time
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg
-from harness.pictures import best_psnr, load_ppm, psnr, ref_rgb, rgb565_pixels, y_planes
-from harness.results import expect
-from harness.tools import (assert_clean, assert_nothing_left, derived, judge_screen_bars, picture_bars, status, still_decode,
+from vchiqtest.material import ffmpeg
+from vchiqtest.pictures import best_psnr, load_ppm, psnr, ref_rgb, rgb565_pixels, y_planes
+from emu68test.results import expect
+from vchiqtest.tools import (assert_clean, assert_nothing_left, derived, judge_screen_bars, picture_bars, status, still_decode,
                            still_reference, still_rgb, still_time, vctest)
 
 
@@ -27,9 +27,9 @@ def test_jpeg_decode(device, material, baselines, artifacts):
     assert r.passed, r.kv.get("fail")
     pic = fetch_ppm(device, "RAM:hw/pic.ppm", artifacts, "pic.ppm")
     score, how = best_psnr(pic, ref_rgb(["-i", str(material.path("pic.jpg"))], 1920, 1080))
-    baselines.check("jpeg_1080p.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("jpeg_1080p.psnr_db", round(score, 1), higher=True, tolerance=2.0)
     us = min(int(r.num("image.us")), still_time(device, material, "j1080.jpg", "RGB24", times=2))
-    baselines.check("jpeg_1080p.image.us", us, higher=False, tolerance="25%")
+    baselines.check_near("jpeg_1080p.image.us", us, higher=False, tolerance="25%")
 
 
 def test_jpeg_size_hint(device, material, baselines, artifacts):
@@ -38,7 +38,7 @@ def test_jpeg_size_hint(device, material, baselines, artifacts):
     assert r.passed, f"VC_DecodeImage {r.kv.get('image.rc')}: {r.kv.get('fail')}"
     pic = fetch_ppm(device, "RAM:hw/pic640.ppm", artifacts, "pic640.ppm")
     score, _ = best_psnr(pic, ref_rgb(["-i", str(material.path("pic640.jpg"))], 640, 480))
-    baselines.check("jpeg_640.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("jpeg_640.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 def test_jpeg_scaled(device, material, baselines, artifacts):
@@ -47,7 +47,7 @@ def test_jpeg_scaled(device, material, baselines, artifacts):
     assert r.passed, r.kv.get("fail")
     pic = fetch_ppm(device, "RAM:hw/small.ppm", artifacts, "small.ppm")
     score, _ = best_psnr(pic, ref_rgb(["-i", str(material.path("pic.jpg"))], 320, 240))
-    baselines.check("jpeg_scaled_320.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("jpeg_scaled_320.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 def frame0_src(material):
@@ -64,7 +64,7 @@ def test_convert_rgb16_720p(device, material, baselines, artifacts):
     data = device.download("RAM:hw/c720.rgb")
     device.delete("RAM:hw/c720.rgb")
     score, _ = best_psnr(rgb565_pixels(data, 1280, 720), ref_rgb(frame0_src(material), 1280, 720, "rgb565le"))
-    baselines.check("convert_720p_rgb16.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("convert_720p_rgb16.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 @pytest.mark.parametrize("size", [(320, 180), (3840, 2160)])
@@ -74,11 +74,11 @@ def test_convert_limits(device, material, baselines, artifacts, size):
     frame = derived(device, material, "frame.i420")
     r = vctest(device, f"CONVERT {frame} WIDTH 1920 HEIGHT 1080 OUTWIDTH {w} OUTHEIGHT {h} OUTFORMAT RGB24 OUT RAM:hw/c{w}.ppm", 120)
     rc = int(r.num("convert.rc"))
-    baselines.check(f"convert_{w}x{h}.convert.rc", rc, higher=True, tolerance=0)
+    baselines.check_near(f"convert_{w}x{h}.convert.rc", rc, higher=True, tolerance=0)
     if rc == 0:
         pic = fetch_ppm(device, f"RAM:hw/c{w}.ppm", artifacts, f"c{w}.ppm")
         score, _ = best_psnr(pic, ref_rgb(frame0_src(material), w, h))
-        baselines.check(f"convert_{w}x{h}.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+        baselines.check_near(f"convert_{w}x{h}.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 def test_convert_800_rows(device, material, baselines, artifacts):
@@ -88,7 +88,7 @@ def test_convert_800_rows(device, material, baselines, artifacts):
     pic = fetch_ppm(device, "RAM:hw/c800.ppm", artifacts, "c800.ppm")
     src = ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", "800x600", "-i", str(material.path("frame800.i420"))]
     score, _ = best_psnr(pic, ref_rgb(src, 800, 600))
-    baselines.check("convert_800x600.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("convert_800x600.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 CAMERA_PIX_FMT = {"YUYV": "yuyv422", "NV12": "nv12"}
@@ -108,7 +108,7 @@ def test_convert_camera_formats(device, material, baselines, artifacts, name, w,
     pic = fetch_ppm(device, "RAM:hw/cam.ppm", artifacts, f"{name}.ppm")
     score, how = best_psnr(pic, ref_rgb(camera_src(material, name, w, h, fmt), w, h))
     assert how == "bt601/full", f"read as {how} ({score:.1f} dB): the firmware's reading changed (docs/firmware-facts.md)"
-    baselines.check(f"convert_{name}.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near(f"convert_{name}.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
 @pytest.mark.parametrize("name, w, h", [("frame640.yuyv", 640, 480), ("frame720.yuyv", 1280, 720)], ids=["640x480", "1280x720"])
@@ -121,7 +121,7 @@ def test_converter_session_rate(device, material, baselines, artifacts, record_p
     record_property("rate", f"{fps} pictures a second, {r.num('convert.per_picture_us')} us each, open {r.num('convert.open_us')} us")
     assert r.num("convert.pictures") == 150, f"{r.kv.get('convert.pictures')} pictures"
     assert fps >= 30, f"{fps} pictures a second"
-    baselines.check(f"converter_{w}x{h}.fps", fps, higher=True, tolerance="20%")
+    baselines.check_near(f"converter_{w}x{h}.fps", fps, higher=True, tolerance="20%")
 
 
 def test_converter_refuses_unlisted(device, material):
@@ -144,7 +144,7 @@ def test_jpeg_encode(device, material, baselines, artifacts, record_property):
     got = y_planes(ffmpeg("-i", str(jpg), "-f", "rawvideo", "-pix_fmt", "yuvj420p", "-"), 1920, 1080, 1)[0]
     ref = y_planes(material.path("frame0.i420"), 1920, 1080, 1)[0]
     record_property("bytes", r.kv.get("encode_image.bytes"))
-    baselines.check("jpeg_encode_q80.psnr_db", round(psnr(got, ref), 1), higher=True, tolerance=2.0)
+    baselines.check_near("jpeg_encode_q80.psnr_db", round(psnr(got, ref), 1), higher=True, tolerance=2.0)
 
 
 def test_progressive_refused(device, material):
@@ -252,7 +252,7 @@ def test_still_1080p_time(device, material, baselines):
     """A 1080p JPEG to RGB24 by the image call: its time (best of three), against the baseline and under 300 ms."""
     us = still_time(device, material, "j1080.jpg", "RGB24")
     assert us < 300_000, f"{us // 1000} ms"
-    baselines.check("still_1080p_rgb24.image.us", us, higher=False, tolerance="25%")
+    baselines.check_near("still_1080p_rgb24.image.us", us, higher=False, tolerance="25%")
 
 
 HEADERS = {  # name: codec, width, height, transparency, frames, as VC_GetImageInfo() must report them

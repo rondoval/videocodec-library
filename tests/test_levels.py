@@ -6,8 +6,8 @@ A refusal is a fact of the hardware, pinned by the baseline (the frames it decod
 import numpy as np
 import pytest
 
-from harness.material import LEVEL_DECLARED, LEVEL_FPS, LEVEL_RATES, LEVEL_REFS, LEVEL_SIZES, describe, ffmpeg
-from harness.tools import assert_nothing_left, vctest
+from vchiqtest.material import LEVEL_DECLARED, LEVEL_FPS, LEVEL_RATES, LEVEL_REFS, LEVEL_SIZES, describe, ffmpeg
+from vchiqtest.tools import assert_nothing_left, vctest
 
 pytestmark = pytest.mark.slow
 
@@ -73,7 +73,7 @@ def test_level_probe(device, material, baselines, record_property, name, ref, sp
         record_property("verdict", word)
         frames = int(r.num("decode.frames", 0))
         assert not word.startswith(("WRONG", "INCOMPLETE", "failed")), f"{word}: {r.kv.get('fail')}"
-        baselines.check(f"level.{name}.frames", frames, higher=True, tolerance=0)
+        baselines.check_near(f"level.{name}.frames", frames, higher=True, tolerance=0)
         if word == "refused" or not speed:
             return
     r = vctest(device, f"DECODE {stream} NOHASH", 180)
@@ -81,7 +81,7 @@ def test_level_probe(device, material, baselines, record_property, name, ref, sp
     fps = r.num("decode.fps")
     want = LEVEL_FPS.get(name, 30)
     record_property("rate", f"{fps} fps ({'real time' if fps >= want else f'BEHIND its {want} fps'})")
-    baselines.check(f"level.{name}.decode.fps", fps, higher=True, tolerance="10%")
+    baselines.check_near(f"level.{name}.decode.fps", fps, higher=True, tolerance="10%")
 
 
 @pytest.mark.parametrize("width, height, refused", MJPEG_SIZES)
@@ -110,7 +110,7 @@ def test_mjpeg_size(device, artifacts, record_property, width, height, refused):
 
 def test_nothing_left(device, baselines, record_property):
     """After the refusals: no session left, the codec memory back."""
-    from harness.tools import codec_memory, status
+    from vchiqtest.tools import codec_memory, status
     r = status(device)
     assert_nothing_left(device)
     free, total = codec_memory(r)

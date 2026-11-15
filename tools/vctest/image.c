@@ -22,7 +22,7 @@
 
 #include <args.h>
 #include <bits.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <strutil.h>
 #include <timing.h>
 #include <vc_names.h>

@@ -12,9 +12,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg, sh
-from harness.pictures import BAR_COLOURS, judge_bars, key_frames, pattern, raw_bars
-from harness.tools import ZC_TROUBLE, assert_nothing_left, dt_page, judge_screen_bars, status, vctest
+from vchiqtest.material import ffmpeg, sh
+from vchiqtest.pictures import BAR_COLOURS, judge_bars, key_frames, pattern, raw_bars
+from vchiqtest.tools import ZC_TROUBLE, assert_nothing_left, dt_page, judge_screen_bars, status, vctest
 from test_ahi import MODE_16BIT
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "vcgrab" / "mkv" / "tests"))  # the muxer's own file reader

@@ -6,8 +6,17 @@ account is developer-guide.md section 8; this is the short form.
 
 ## Once
 
-    python3 -m venv tests/.venv && tests/.venv/bin/pip install -r tests/requirements.txt
-    tests/.venv/bin/python tests/harness/material.py     # the material ahead of time (optional)
+    ./scripts/docker-build.sh            # from the stack root: the build, and the harness it installs
+    tests/run.sh material                # the material ahead of time (optional)
+
+The suite builds on emu68-common's test harness (`emu68test`: the machine,
+the install, the debug log, the grammar, baselines, the report), which the
+stack build installs to `install/share/emu68-testing/`. `tests/run.sh` finds
+it there (`$EMU68_TESTING` names another place) and makes `tests/.venv` on its
+first run from the harness's requirements and `requirements.txt` here. What is
+VideoCore's own is the package `vchiqtest/`; the build installs it to
+`install/share/vchiq-testing/` for the codec backends' suites, which never
+read this directory.
 
 The material is made on the host from one sample video that the first run
 downloads from convertico.com into `tests/.cache/source/` and checks by its
@@ -24,22 +33,24 @@ and `build/` in place: the suite replaces `DEVS:vchiq.device`,
 `DEVS:AudioModes/VIDEOCORE`, `SYS:Classes/DataTypes/vcjpeg.datatype` and
 `SYS:Storage/DataTypes/VCJPEG`
 from the install tree and reboots; nothing else on the Amiga changes, and
-everything temporary goes to `RAM:hw`. The Amiga must have the project
+everything temporary goes to `RAM:hw`. Before a file is first replaced, the
+machine's own goes to `tests/.machine/<server>/` and stays there. The Amiga must have the project
 installed by the installer (the datatype's line in `S:User-Startup`
 included).
 
 ## Running
 
-    tests/.venv/bin/pytest tests -m smoke        # one of every binary and path, about six minutes
-    tests/.venv/bin/pytest tests                 # everything automatic, about 25 minutes
-    tests/.venv/bin/pytest tests -m "not slow"   # without the level probes and the whole still set
-    tests/.venv/bin/pytest tests --collect-only -q
-    tests/.venv/bin/pytest tests/unit            # the harness's own host-only tests
+    tests/run.sh -m smoke            # one of every binary and path, about six minutes
+    tests/run.sh                     # everything automatic, about 25 minutes
+    tests/run.sh -m "not slow"       # without the level probes and the whole still set
+    tests/run.sh --collect-only -q
+    tests/run.sh unit                # the host-only tests of vchiqtest's picture maths and recipes
 
 Options: `--server`, `--install-dir`, `--build-dir`, `--run-dir`,
 `--no-install`, `--no-reboot`, `--listen`, `--hands`, `--profile`,
 `--serial DEV|none`, `--require-debug-log`, `--update-baselines`,
-`--keep-ram`; `pytest --help` lists them under "the machine under test".
+`--keep-ram`; `tests/run.sh --help` lists them under "the stack's common test
+harness" and "a VideoCore suite".
 
 Markers: `smoke`, `slow`, `reboot` (run last; `--no-reboot` drops them),
 `hooks` and `profile` (skipped or deselected unless the build allows),
@@ -58,7 +69,7 @@ command line (the default) lists every failure and skip with its reason.
 `baselines.json` holds measured numbers per machine. A test says what a
 number means where it checks it:
 
-    baselines.check("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
+    baselines.check_near("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
 
 No baseline yet: recorded with a warning. `--update-baselines` writes this
 machine's measured values into the file at the end; read the diff before
@@ -69,18 +80,21 @@ committing it.
 `VCTest` and `VPUPlay` print `format=1`, then `key=value` lines (groups by
 number: `stream.0.width`), prose indented two spaces, and `PASS` or `FAIL`
 last; return codes 0 passed, 5 a self-check failed, 10 the environment, 20
-the API or the arguments. `harness/results.py` parses it; the keys are in
+the API or the arguments. The grammar is emu68-common's (`<emu68test/kv.h>`
+on the Amiga, `emu68test/results.py` on the host); the keys are in
 the rigs' sources (`tools/vctest/`, `tools/VPUPlay.c`) and developer-guide
 section 6.
 
 ## Layout
 
-    conftest.py        options, fixtures, ordering, the report
-    harness/amiga.py   the device over amimcp: run, start, upload, download, reboot, screenshot
-    harness/serial.py  the debug log capture and its slices
-    harness/results.py the grammar
-    harness/material.py, stills.py   the material recipes and cache
-    harness/pictures.py  PSNR, PPM, the colour bars
-    harness/baselines.py, report.py, perf.py, tools.py
+    run.sh             the entry point: the harness on the path, the venv
+    conftest.py        says which suite this is and loads the two plugins
+    vchiqtest/         VideoCore's part of the harness, installed for the backends' suites:
+      suite.py           the rigs, the files replaced, RAM:hw
+      machine.py         the device: rigs by name, the screen, the Pi's power
+      plugin.py          the options, the tiers, the fixtures (device, material, baselines, operator)
+      material.py, stills.py   the material recipes and cache
+      pictures.py        PSNR, PPM, the colour bars
+      tools.py           what the tests share: status checks, stills, the colour-bar judgement
     test_*.py          the tests, one module per area
-    unit/              host-only tests of the harness
+    unit/              host-only tests of vchiqtest

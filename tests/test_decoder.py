@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg
-from harness.pictures import psnr, y_planes
-from harness.tools import assert_nothing_left, vctest
+from vchiqtest.material import ffmpeg
+from vchiqtest.pictures import psnr, y_planes
+from vchiqtest.tools import assert_nothing_left, vctest
 
 CHAINED_LEAST_DB = 40.0  # the chain's luma against ffmpeg's: the converter only repacks it, a wrong picture scores 10 to 15
 
@@ -87,7 +87,7 @@ def test_decoder_rate(device, material, baselines):
     """The decoder's own rate, no hashing: the baseline of the hardware."""
     r = decode(device, material, "clip42.h264", "FRAMES 300 NOHASH", ref=False, timeout=120)
     assert r.passed, r.kv.get("fail")
-    baselines.check("decoder_alone.decode.fps", r.num("decode.fps"), higher=True, tolerance="10%")
+    baselines.check_near("decoder_alone.decode.fps", r.num("decode.fps"), higher=True, tolerance="10%")
 
 
 def test_two_decodes_at_once(device, material):

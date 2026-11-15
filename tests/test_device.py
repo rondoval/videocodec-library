@@ -2,7 +2,7 @@
 """vchiq.device: the connection, a bulk transfer, the codec table as the library reports it, expunge and resume."""
 import pytest
 
-from harness.tools import assert_nothing_left, status, vctest
+from vchiqtest.tools import assert_nothing_left, status, vctest
 
 STILL_FORMATS = "I420,RGB16,RGB24,BGR24,BGRA32,RGBA32"
 # the ISP's own, a camera's, the column format and the formats tests/test_formats.py proves

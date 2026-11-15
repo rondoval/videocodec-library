@@ -22,7 +22,7 @@
 #include <exec/memory.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <timing.h>
 #include <vc_names.h>
 
@@ -272,7 +272,7 @@ static void encode_loop(struct encode *e)
 		{
 			kv_bool("encode.idle", seen == 0);
 			kv_str("fail", seen == 0 ? "nothing happened" : "stopped");
-			note("nothing happened for %lu ms (or Ctrl-C): %lu pictures sent, %lu packets back\n", (ULONG)IDLE_MS, e->sent, e->packets);
+			kv_note("nothing happened for %lu ms (or Ctrl-C): %lu pictures sent, %lu packets back", (ULONG)IDLE_MS, e->sent, e->packets);
 			e->failed = TRUE;
 			return;
 		}

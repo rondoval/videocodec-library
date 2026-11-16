@@ -13,6 +13,8 @@ PRESS_WAIT_S = 1800  # someone has to come to the machine: longer than a test's 
 
 def test_missing_drawer(device):
     """No LIBS:videocodec drawer: no codecs, no hang; the drawer back, the codecs back."""
+    before = vctest(device, "CODECS", 30)
+    assert before.passed and before.num("codecs") > 0, before.kv.get("fail")
     device.flush()
     device.exec("Rename LIBS:videocodec AS LIBS:videocodec-tests", timeout=15)
     try:
@@ -22,7 +24,8 @@ def test_missing_drawer(device):
     assert not gone.passed and gone.num("codecs") == 0, f"{gone.kv.get('codecs')} codecs without the drawer"
     device.flush()  # the scan is cached until the library goes
     back = vctest(device, "CODECS", 30)
-    assert back.passed and back.num("codecs") == 11, f"{back.kv.get('codecs')} codecs with the drawer back"
+    assert back.passed and back.num("codecs") == before.num("codecs"), \
+        f"{back.kv.get('codecs')} codecs with the drawer back, {before.kv.get('codecs')} before"
 
 
 @pytest.mark.reboot

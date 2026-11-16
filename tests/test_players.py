@@ -124,10 +124,9 @@ def test_no_room_for_a_decoder(device, material):
     jobs = [device.start("VPUPlay", f"{stream} WINDOW LOOP") for _ in range(2)]
     try:
         time.sleep(6)
-        started = time.time()
         r = vpuplay(device, f"{stream} WINDOW FRAMES 30", 30)
-        took = time.time() - started
         assert r.rc == 20 and r.kv.get("fail") == "VC_SendPacket failed", f"rc {r.rc}, {r.kv.get('fail')}"
+        took = r.num("play.total_us") / 1e6     # the player's own clock: the agent is slow beside two decoders
         assert took < 4, f"refused after {took:.1f} s"
     finally:
         for job in jobs:

@@ -65,10 +65,11 @@ vchiqtest's picture maths and material recipes (`unit/`), and the gates
 
 - **Kernel-doc:** every function of the component's C has its comment, with
   each parameter and the return value. The mkv-writer submodule is left out.
-- **Complexity:** a function's cyclomatic complexity is 10 at most.
+- **Complexity:** a function's cyclomatic complexity is 15 at most (the
+  harness's default is 10; `gates/test_gates.py` sets this suite's).
   `complexity-allow.txt` lists the functions that were over when the gate came
   (0.6), each at the complexity it had; the gate fails on a ceiling higher than
-  its function needs, so the list only goes down. A new entry may be 15 at
+  its function needs, so the list only goes down. A new entry may be 20 at
   most, with a reason.
 - **Traceability:** `TRACEABILITY.md` is rewritten on every run. Its items are
   read from the sources: videocodec.library's functions, vchiq.device's

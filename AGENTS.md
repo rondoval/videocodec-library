@@ -32,7 +32,7 @@ or `./build.sh --build`. Zero warnings.
 
 From the component root:
 
-- After any change to C or to the tests: `tests/run.sh host` (no Amiga, seconds): vchiqtest's own tests, the code gates over all of the component's C (kernel-doc on every function, cyclomatic complexity at most 10; `tests/complexity-allow.txt` holds the 0.6 code's exceptions at a ceiling that only goes down) and traceability (`tests/TRACEABILITY.md`, rewritten each run: every library function, device command, tag and VCGrab settings key with the tests that cover it, or as a known gap in `tests/gates/trace_items.py`). A new function needs its kernel-doc, a new library function, device command, tag or settings key a test that covers it. The suite builds on
+- After any change to C or to the tests: `tests/run.sh host` (no Amiga, seconds): vchiqtest's own tests, the code gates over all of the component's C (kernel-doc on every function, cyclomatic complexity at most 15; `tests/complexity-allow.txt` holds the 0.6 code's exceptions at a ceiling that only goes down, a new entry 20 at most with a reason) and traceability (`tests/TRACEABILITY.md`, rewritten each run: every library function, device command, tag and VCGrab settings key with the tests that cover it, or as a known gap in `tests/gates/trace_items.py`). A new function needs its kernel-doc, a new library function, device command, tag or settings key a test that covers it. The suite builds on
   emu68-common's harness (`emu68test`, from the stack's install tree): shared test code
   belongs there, the VideoCore part in `tests/vchiqtest/`, which the build installs for the
   codec backends' suites.

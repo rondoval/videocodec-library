@@ -505,13 +505,15 @@ command's source say what the arguments do.
 | `ABANDON` | leaves the session as a crash in mid-flight would, for the repair test; needs the test hooks (8.2) | `abandon.*` |
 | `AUDIO` | silence or a tone through the firmware's audio service, driven directly; `DEST` 1 the jack, 2 HDMI0, 3 HDMI1 | `run.N.*`, `stop.N.*`, `pins.*` |
 | `AHIWALK`, `AHITONE` | a channel walk or a tone through an AHI mode | `ahi.*` |
-| `DECODE` | a decoder session over an Annex-B file, each frame's MD5 compared with ffmpeg's `framemd5` | `decode.*`, `stream.N.*`, `ref.*`, `mismatch.N.*`, `flush.*`, `keep.*`, `resignal.*` |
-| `IMAGE` | a still picture through `VC_DecodeImage()` | `header.*`, `image.*` |
-| `TOJPEG`, `CONVERT` | the other image calls | `encode_image.*`, `convert.*` |
-| `ENCODE` | an H.264 encoder session over a raw file, I420 or any `FORMAT`, `OUTWIDTH` and `OUTHEIGHT` through the ISP; `PACE`, `PACKET`, `GAPS`, `ENDEMPTY`, `HOLD` for the tests | `encode.*`, `packet.N.*` |
+| `DECODE` | a decoder session over an Annex-B file, each frame's MD5 compared with ffmpeg's `framemd5`; `IMPORT n` and `IMPORTFRAMES n` (with `WIDTH`, `HEIGHT`) give it the rig's own memory as packets and frames | `decode.*`, `stream.N.*`, `ref.*`, `mismatch.N.*`, `flush.*`, `keep.*`, `resignal.*`, `open.backend.N.*` (each backend while the session is open) |
+| `IMAGE` | a still picture through `VC_DecodeImage()`; `TIMEOUT ms` its `VCA_Timeout` | `header.*`, `image.*` |
+| `TOJPEG`, `CONVERT` | the other image calls; `SOURCE x,y,w,h` the part `CONVERT` reads (`VCA_SourceRect`) | `encode_image.*`, `convert.*` |
+| `ENCODE` | an H.264 encoder session over a raw file, I420 or any `FORMAT`, `OUTWIDTH` and `OUTHEIGHT` through the ISP; `PROFILE`, `LEVEL`, `RATE` (`VBR`, `CBR`) and `COLORSPACE` the session's; `PACE`, `PACKET`, `GAPS`, `ENDEMPTY`, `HOLD` for the tests | `encode.*`, `packet.N.*` |
 | `DATATYPE` | a picture through datatypes.library, as a program loads one | `datatype.*` |
 | `PAGE` | many pictures at once, a process each (64 at most), as a browser loads a page | `picture.N.*`, `page.*` |
 | `HOLD` | the free RAM the VPU reaches taken, all but `LEAVE` MiB at the end of the largest chunk, until Ctrl-C | `hold.*` |
+| `DEVICE` | vchiq.device's own commands on a GCMD service: `NSCMD_DEVICEQUERY`'s list, and `CMD_FLUSH` giving back the posted reads | `devicequery.*`, `flush.*` |
+| `PROBE name` | a codec backend's entry points called directly, past the library, with what no program may hand them: each must be refused | `probe.*` |
 | `SCREEN` | a Picasso96 screen to record: the colour bars and a moving block, or `NOISE`; `BACK n` steps it behind the others after n seconds, for three; `NATIVE` or `DEPTH 8` a screen VCGrab must refuse | `screen.*` |
 
 `DECODE`'s `OUT` writes the frames raw, the input of `TOJPEG`, `CONVERT` and
@@ -673,7 +675,7 @@ tests/run.sh                            # everything automatic, about 25 minutes
 tests/run.sh -m "not slow"              # without the level probes and the whole still set
 tests/run.sh test_images.py -k jpeg     # pytest's own selection
 tests/run.sh --collect-only -q          # the list of tests
-tests/run.sh unit                       # the host-only tests of the suite's own modules
+tests/run.sh host                       # no Amiga: the suite's own modules, the code gates, traceability
 ```
 
 The options, beside pytest's own (emu68test's plugin and `tests/vchiqtest/plugin.py`):
@@ -739,14 +741,14 @@ the install reboot must log `[vchiq] up:` on a debug build, or the run stops.
 | Module | What |
 |---|---|
 | `test_vcinfo.py` | VCInfo as a product: the summary, DUMP, GCMD, COMPONENTS, CODECS |
-| `test_device.py` | the connection up, the codec table with what a chain adds, a bulk transfer to the audio service, resume after an expunge |
-| `test_decoder.py` | bit-exact decodes, the backend named or refused, the decoder's rate, two at once, a JPEG through the video decoder, flush and replay, a chain behind the decoder, the shape change, the pixel aspect |
+| `test_device.py` | the connection up, the codec table with what a chain adds, a bulk transfer to the audio service, resume after an expunge; the device's own NSCMD_DEVICEQUERY and CMD_FLUSH; videocore.codec's refusals, called directly |
+| `test_decoder.py` | bit-exact decodes, the backend named or refused, the decoder's rate, two at once, a JPEG through the video decoder, flush and replay, a chain behind the decoder, the shape change, the pixel aspect; packets and frames of the program's own memory |
 | `test_players.py` | VPUPlay full screen and in a window, the colour bars, LOOP, two players, an empty stream, the shape change and pixel aspect on screen; VCPlay |
-| `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses |
+| `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses; an image call's timeout, part of a picture converted |
 | `test_formats.py` | every further pixel format the converter offers, in and out, against ffmpeg's conversion; the ones it does not, refused |
 | `test_choice.py` (reboot) | the backend chosen by the pictures asked for: `tests/swconv/`, a software converter built only for the suite, put in `LIBS:videocodec/` for the module |
-| `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise |
-| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs |
+| `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise; the profile, level, rate control and colour space asked for |
+| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs; the saved settings, every key of them |
 | `test_levels.py` | the H.264 limit probes: declared levels, reference frames, rates, sizes, profiles; MJPEG sizes against ffmpeg |
 | `test_audio.py` | the audio service directly: rates, chunk and depth, STOP, two streams, outputs, channel counts; by ear the tone, the volume step, the channel walk |
 | `test_ahi.py` | videocore.audio through AHI: the three modes, the driver's log lines, two streams, a break, the services closed; by ear the 7.1 order |

@@ -38,6 +38,7 @@ def test_routing(device, material, record_property, name, ours):
 
 
 @pytest.mark.parametrize("name", ["j1080.jpg", "jodd.jpg", "j420.jpg"])
+@pytest.mark.covers("VCA_DestRect")
 def test_pixels(device, material, baselines, name):
     """The pixels against Pillow: 1080p straight into picture.datatype's buffer, 1800x1101 through the class's own, 640x480 the system's."""
     desc, code, us, _, raw = dt_load(device, material, name, out=True)

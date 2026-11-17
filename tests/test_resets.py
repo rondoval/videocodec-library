@@ -102,6 +102,7 @@ def test_reboot_during_sound(device, driver_log, record_property):
 
 @pytest.mark.reboot
 @pytest.mark.hooks
+@pytest.mark.covers("NSCMD_VQ_TEST_ABANDON")
 def test_abandon_then_repair(device, driver_log):
     """A session left as a crash would (ABANDON, then C:Reboot): the first open after the reset repairs it, and the
     repaired connection carries a service with bulk transfers (the audio service); a reboot leaves it resumed."""

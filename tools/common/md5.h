@@ -40,11 +40,25 @@ static const unsigned char md5_r[64] = {
     4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
 };
 
+/**
+ * md5_rotl() - Rotate @x left.
+ *
+ * @x: the word
+ * @n: bits, 1 to 31
+ *
+ * Return: the rotated word.
+ */
 static inline md5_u32 md5_rotl(md5_u32 x, unsigned n)
 {
 	return (x << n) | (x >> (32u - n));
 }
 
+/**
+ * md5_block() - Take one 64-byte block into the state.
+ *
+ * @m: the digest in progress
+ * @p: the block, 64 bytes
+ */
 static void md5_block(struct md5 *m, const unsigned char *p)
 {
 	md5_u32 w[16];
@@ -89,6 +103,11 @@ static void md5_block(struct md5 *m, const unsigned char *p)
 	m->state[3] += d;
 }
 
+/**
+ * md5_init() - Start a digest.
+ *
+ * @m: the digest to start
+ */
 static void md5_init(struct md5 *m)
 {
 	m->state[0] = 0x67452301u;
@@ -100,6 +119,13 @@ static void md5_init(struct md5 *m)
 	m->used = 0;
 }
 
+/**
+ * md5_update() - Feed bytes to the digest; a part block is kept in @m until it is full.
+ *
+ * @m:    the digest in progress
+ * @data: the bytes
+ * @n:    their number
+ */
 static void md5_update(struct md5 *m, const unsigned char *data, md5_u32 n)
 {
 	md5_u32 lo = m->len_lo + n;
@@ -133,6 +159,14 @@ static void md5_update(struct md5 *m, const unsigned char *data, md5_u32 n)
 	m->used = n;
 }
 
+/**
+ * md5_final() - Finish the digest: pad, add the length, and write the 16 bytes.
+ *
+ * @m:      the digest in progress
+ * @digest: receives the digest
+ *
+ * @m is left spent; md5_init() starts another.
+ */
 static void md5_final(struct md5 *m, unsigned char digest[16])
 {
 	md5_u32 bits_lo = m->len_lo << 3;

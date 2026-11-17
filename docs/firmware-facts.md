@@ -168,6 +168,12 @@ be done. Add a fact here when a measurement finds one.
   the 25 asked for over 15. Packets have a minimum of 64 KB at 1080p. A key frame of
   noise is 0.8 to 1.3 MB and comes in pieces: all of one Pts and key flag, the
   first with the configuration flag, only the last with the frame end.
+* **No constant bit rate.** With `MMAL_PARAMETER_RATECONTROL` set to
+  `MMAL_VIDEO_RATECONTROL_CONSTANT` on the output port the parameter is taken,
+  but the input port's enable then fails with EINVAL, whether the rate control
+  goes before the bit rate or after it (`tests/test_encoder.py`, 1080p at 4
+  Mbit/s). `VARIABLE` works, and comes in under the bit rate asked for on an easy
+  picture (1.9 Mbit/s of 4 over the 30 pictures of `clip.i420`).
 * **The ISP's 32-bit input.** It reads an RGBA input as BGRA and the reverse; its
   output is right.
 
@@ -205,7 +211,11 @@ JPEG, PNG, GIF, BMP, TGA and PPM in any pieces, at least 2 buffers of 80 KiB.
   for the decoder's rows, a host with no memory left for the frame) left the
   firmware's MMAL dead, its memory held, until a Pi restart. A picture cut short
   would do the same: the decoder waits for the rest and is closed holding part of
-  it.
+  it. So would a caller's timeout: a 1 ms `VCA_Timeout` disabled the output port
+  of a 1080p JPEG decode under way, the VPU never answered that port action, and
+  every service went quiet, `SMEM` and gencmd too, a `C:Reboot` finding no
+  connection after (`tests/test_images.py`). A timed-out pass now lets its picture
+  end, for up to 5 s, before its session is closed.
 * **It gets wrong:** a PNG whose height is no multiple of 16 has its last
   `h mod 16` rows written `16 - h mod 16` rows too high (those rows lost); the
   transparent colour of a GIF or an RGB PNG comes out opaque (a palette PNG's

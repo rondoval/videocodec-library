@@ -412,6 +412,16 @@ static int workbench(const struct WBStartup *wbs)
 	return commodity(&a);
 }
 
+/**
+ * main() - Entry point: open the libraries, then start as the shell or Workbench asks.
+ *
+ * @argc: the argument count, 0 from Workbench
+ * @argv: the arguments, or the WBStartup message from Workbench
+ *
+ * A failed Workbench start is told in a requester.
+ *
+ * Return: the return code.
+ */
 int main(int argc, char **argv)
 {
 	from_workbench = argc == 0;

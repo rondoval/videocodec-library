@@ -3,7 +3,7 @@
 # The vchiq library's test suite (README.md).
 #
 #   run.sh [pytest options]             the hardware suite, e.g. run.sh -m smoke --server amiga-pi4
-#   run.sh unit [pytest options]        the suite's own host-only tests; no Amiga
+#   run.sh host [pytest options]        vchiqtest's own tests, the code gates and traceability; no Amiga
 #   run.sh material [--only NAME]       make the test material ahead of time
 #
 # Give an option that names a directory as --build-dir=PATH, with the equals sign: pytest takes a
@@ -27,15 +27,15 @@ fi
 export PYTHONPATH="$harness${PYTHONPATH:+:$PYTHONPATH}"
 cd "$here"
 case "${1:-}" in
-    unit)
+    host)
         shift
-        exec "$venv/bin/python" -m pytest unit "$@"
+        exec "$venv/bin/python" -m pytest unit gates "$@"
         ;;
     material)
         shift
         exec "$venv/bin/python" -m vchiqtest.material "$@"
         ;;
     *)
-        exec "$venv/bin/python" -m pytest --ignore=unit "$@"
+        exec "$venv/bin/python" -m pytest --ignore=unit --ignore=gates "$@"
         ;;
 esac

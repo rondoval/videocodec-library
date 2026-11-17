@@ -74,6 +74,8 @@ add_executable(VCTest
     vctest/encode.c
     vctest/screen.c
     vctest/hold.c
+    vctest/device.c
+    vctest/probe.c
 )
 # the test-only command's number (vchiq/vchiq_test.h): a test rig's privilege; the AUDS wire format
 target_include_directories(VCTest PRIVATE

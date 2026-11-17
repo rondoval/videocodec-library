@@ -32,11 +32,12 @@
 
 #define CONVERT_INPUTS 3      /* copies of the picture a converter session cycles through, so the VPU always has one */
 #define CONVERT_IDLE_MS 5000u /* a converter session with nothing back this long has stalled */
+#define RECT_NUMBERS 4u        /* SOURCE: x,y,w,h */
 
-const char image_template[] = "FILE/A,OUT/A,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,ENCODING/K,BACKEND/K,MISALIGN/S";
+const char image_template[] = "FILE/A,OUT/A,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,ENCODING/K,BACKEND/K,MISALIGN/S,TIMEOUT/K/N";
 const char tojpeg_template[] = "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,QUALITY/N,BACKEND/K,MISALIGN/S";
 const char convert_template[] =
-    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,BACKEND/K,MISALIGN/S,COUNT/N";
+    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,BACKEND/K,MISALIGN/S,COUNT/N,SOURCE/K";
 
 enum
 {
@@ -47,7 +48,8 @@ enum
 	IMG_OUTFORMAT,
 	IMG_ENCODING,
 	IMG_BACKEND,
-	IMG_MISALIGN
+	IMG_MISALIGN,
+	IMG_TIMEOUT
 };
 
 enum
@@ -74,7 +76,8 @@ enum
 	CNV_OUTFORMAT,
 	CNV_BACKEND,
 	CNV_MISALIGN,
-	CNV_COUNT
+	CNV_COUNT,
+	CNV_SOURCE
 };
 
 /* A converter session's run: COUNT pictures out of the copies of one */
@@ -185,9 +188,11 @@ int do_image(struct tool *t, LONG *args)
 	kv_unum("image.out.pitch", f.Pitch[0]);
 	LONG err = 0;
 	u32 t0 = get_time();
+	ULONG timeout_ms = arg_num(args, IMG_TIMEOUT, 0); /* 0: the backend's own */
+	kv_unum("image.timeout_ms", timeout_ms);
 	LONG r = VC_DecodeImageTags(codec != VCC_None ? VCA_Codec : TAG_IGNORE, codec, VCA_Data, (ULONG)data, VCA_Length, len, VCA_Dest,
 	                            (ULONG)f.Data, VCA_OutputFormat, fmt, VCA_OutputWidth, ow, VCA_OutputHeight, oh, VCA_OutputPitch, f.Pitch[0],
-	                            BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                            VCA_Timeout, timeout_ms, BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	u32 took = get_time() - t0;
 	kv_num("image.rc", r);
 	kv_unum("image.us", took);
@@ -456,6 +461,42 @@ out:
 }
 
 /**
+ * source_rect() - SOURCE x,y,w,h: the part of the picture a conversion reads (VCA_SourceRect).
+ * @text: the argument, or NULL for all of the picture
+ * @rect: filled from it
+ *
+ * Prints convert.source: the rectangle taken, "all" without one, "ignored"
+ * for text that is not four numbers.
+ *
+ * Return: VCA_SourceRect with @rect filled, or TAG_IGNORE: the tag the call takes in its place.
+ */
+static Tag source_rect(const char *text, struct VCRect *rect)
+{
+	LONG numbers[RECT_NUMBERS];
+	ULONG count = 0;
+	const char *at = text;
+	while (at != NULL && count < RECT_NUMBERS)
+	{
+		LONG used = StrToLong((CONST_STRPTR)at, &numbers[count]);
+		if (used <= 0 || numbers[count] < 0)
+			break;
+		count++;
+		at = at[used] == ',' ? at + used + 1 : NULL;
+	}
+	if (count != RECT_NUMBERS)
+	{
+		kv_str("convert.source", text != NULL ? "ignored" : "all");
+		return TAG_IGNORE;
+	}
+	rect->X = numbers[0];
+	rect->Y = numbers[1];
+	rect->Width = numbers[2];
+	rect->Height = numbers[3];
+	kv_str("convert.source", text);
+	return VCA_SourceRect;
+}
+
+/**
  * do_convert() - CONVERT: one raw picture scaled and converted by VC_ConvertImage(), or by a converter session (COUNT).
  * @t:    the tool
  * @args: convert_template's
@@ -515,9 +556,11 @@ int do_convert(struct tool *t, LONG *args)
 	kv_unum("convert.out.pitch", out.Pitch[0]);
 	LONG err = 0;
 	u32 t0 = get_time();
+	struct VCRect source;
+	Tag source_tag = source_rect(arg_str(args, CNV_SOURCE), &source);
 	LONG r = VC_ConvertImageTags(VCA_Data, (ULONG)in.Data, VCA_Width, w, VCA_Height, h, VCA_InputFormat, fmt, VCA_InputPitch, in.Pitch[0],
-	                             VCA_Dest, (ULONG)out.Data, VCA_OutputFormat, ofmt, VCA_OutputWidth, ow, VCA_OutputHeight, oh, VCA_OutputPitch,
-	                             out.Pitch[0], BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                             source_tag, (ULONG)&source, VCA_Dest, (ULONG)out.Data, VCA_OutputFormat, ofmt, VCA_OutputWidth, ow,
+	                             VCA_OutputHeight, oh, VCA_OutputPitch, out.Pitch[0], BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	u32 took = get_time() - t0;
 	kv_num("convert.rc", r);
 	kv_unum("convert.us", took);

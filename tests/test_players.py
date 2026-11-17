@@ -175,6 +175,7 @@ def test_shape_change_on_screen(device, material):
     assert not problems, "; ".join(problems)
 
 
+@pytest.mark.covers("VCA_KeepAspect")
 def test_pixel_aspect_on_screen(device, material, driver_log):
     """A 720x576 stream of 64:45 pixels placed 16:9 on screen, as a TV shows it, not 5:4."""
     mark = driver_log.mark()

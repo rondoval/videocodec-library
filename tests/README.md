@@ -44,7 +44,7 @@ included).
     tests/run.sh                     # everything automatic, about 25 minutes
     tests/run.sh -m "not slow"       # without the level probes and the whole still set
     tests/run.sh --collect-only -q
-    tests/run.sh unit                # the host-only tests of vchiqtest's picture maths and recipes
+    tests/run.sh host                # no Amiga: vchiqtest's own tests, the code gates, traceability
 
 Options: `--server`, `--install-dir`, `--build-dir`, `--run-dir`,
 `--no-install`, `--no-reboot`, `--listen`, `--hands`, `--profile`,
@@ -56,6 +56,27 @@ Markers: `smoke`, `slow`, `reboot` (run last; `--no-reboot` drops them),
 `hooks` and `profile` (skipped or deselected unless the build allows),
 `listen` and `hands` (only with `--listen`, `--hands`: someone at the machine
 answers in the terminal).
+
+## The host tier
+
+`tests/run.sh host` needs no Amiga and runs in seconds: the tests of
+vchiqtest's picture maths and material recipes (`unit/`), and the gates
+(`gates/`):
+
+- **Kernel-doc:** every function of the component's C has its comment, with
+  each parameter and the return value. The mkv-writer submodule is left out.
+- **Complexity:** a function's cyclomatic complexity is 10 at most.
+  `complexity-allow.txt` lists the functions that were over when the gate came
+  (0.6), each at the complexity it had; the gate fails on a ceiling higher than
+  its function needs, so the list only goes down. A new entry may be 15 at
+  most, with a reason.
+- **Traceability:** `TRACEABILITY.md` is rewritten on every run. Its items are
+  read from the sources: videocodec.library's functions, vchiq.device's
+  commands, the `VCA_*` tags and the keys of VCGrab's settings file. A test
+  says what it covers with `@pytest.mark.covers("VC_Flush")`. An item no test
+  covers fails the gate, unless `gates/trace_items.py` names it a known gap
+  with the reason; a known gap that a test covers after all fails too, until
+  it is taken off that list.
 
 ## What comes out
 
@@ -71,19 +92,19 @@ number means where it checks it:
 
     baselines.check_near("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
 
-No baseline yet: recorded with a warning. `--update-baselines` writes this
+The figure may miss the baseline by the tolerance given (emu68test's
+`baselines.py`). No baseline yet: recorded with a warning. `--update-baselines` writes this
 machine's measured values into the file at the end; read the diff before
 committing it.
 
 ## The grammar
 
-`VCTest` and `VPUPlay` print `format=1`, then `key=value` lines (groups by
-number: `stream.0.width`), prose indented two spaces, and `PASS` or `FAIL`
-last; return codes 0 passed, 5 a self-check failed, 10 the environment, 20
-the API or the arguments. The grammar is emu68-common's (`<emu68test/kv.h>`
-on the Amiga, `emu68test/results.py` on the host); the keys are in
-the rigs' sources (`tools/vctest/`, `tools/VPUPlay.c`) and developer-guide
-section 6.
+`VCTest` and `VPUPlay` print the harness's grammar (`Emu68Common::kv`;
+emu68-common's `testing/README.md` describes it, with the return codes):
+`format=1`, the `command`, `key=value` facts (groups by number:
+`stream.0.width`), prose indented two spaces, and `PASS` or `FAIL` last. The
+keys are in the rigs' sources (`tools/vctest/`, `tools/VPUPlay.c`) and
+developer-guide section 6.
 
 ## Layout
 
@@ -98,3 +119,5 @@ section 6.
       tools.py           what the tests share: status checks, stills, the colour-bar judgement
     test_*.py          the tests, one module per area
     unit/              host-only tests of vchiqtest
+    gates/             the code gates and the traceability items
+    complexity-allow.txt, TRACEABILITY.md (written by the host tier), baselines.json

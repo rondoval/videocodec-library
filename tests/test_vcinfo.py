@@ -69,6 +69,7 @@ def test_codec_table(device):
     assert rows == VIDEOCORE_ROWS, f"videocore.codec has {rows} rows, not {VIDEOCORE_ROWS}"
 
 
+@pytest.mark.covers("VC_CodecOfTag")
 def test_codec_of_tag(device):
     """VC_CodecOfTag(): the codec of the FourCCs players meet, in either case, and none for one it does not know."""
     want = {"XVID": "MPEG4", "xvid": "MPEG4", "hvc1": "H265", "avc1": "H264", "DIV3": "MSMPEG4", "WVC1": "VC1",

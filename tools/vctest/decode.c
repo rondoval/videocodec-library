@@ -29,7 +29,11 @@
  * hash (frame.N.md5), for a host that matches frames by content when a
  * damaged stream loses some.  OUT writes the frames: I420's planes as
  * ffmpeg's rawvideo packs them, a column frame whole, a packed format's
- * visible rows.  A .jpg goes as one MJPEG picture.
+ * visible rows.  A .jpg goes as one MJPEG picture.  IMPORT n makes n
+ * packets of the rig's own memory the session's input (VC_ImportPacket()),
+ * IMPORTFRAMES n as many of its output frames (VC_ImportFrame()), their shape
+ * from WIDTH and HEIGHT (VCA_Width, VCA_Height).  While its session is open,
+ * the run prints each backend's state (open.backend.N.*).
  */
 #ifdef __INTELLISENSE__
 #include <clib/exec_protos.h>
@@ -47,15 +51,17 @@
 
 #include <args.h>
 #include <emu68test/kv.h>
+#include <bits.h>
 #include <md5.h>
 #include <timing.h>
 #include <vc_names.h>
 
 #include "commands.h"
+#include "picture.h"
 
 const char decode_template[] =
     "FILE/A,REF/K,OUT/K,FRAMES/N,NOHASH/S,ENCODING/K,VERBOSE/S,FRAMED/S,FPS/N,OUTFORMAT/K,FLUSH/N,BACKEND/K,EXTRADATA/S,PAD/N,NOPTS/S,NORATE/S,PACKET/N,"
-    "HASHES/S,CONFIG/K,TAG/K,KEEP/S,RESIGNAL/N";
+    "HASHES/S,CONFIG/K,TAG/K,KEEP/S,RESIGNAL/N,IMPORT/K/N,IMPORTFRAMES/K/N,WIDTH/K/N,HEIGHT/K/N";
 
 enum
 {
@@ -80,13 +86,21 @@ enum
 	ARG_CONFIG,
 	ARG_TAG,
 	ARG_KEEP,
-	ARG_RESIGNAL
+	ARG_RESIGNAL,
+	ARG_IMPORT,
+	ARG_IMPORTFRAMES,
+	ARG_WIDTH,
+	ARG_HEIGHT
 };
 
 #define DECODE_PACKETS 4               /* the session's input packets */
 #define FLUSH_PTS ((VCTime)1000000000) /* FLUSH: the restarted stream's timestamps, 1000 s on */
 #define NO_LIMIT 0xffffffffu
 #define KEEP_ROW_STEP 16u /* KEEP sums every 16th row: enough to see a picture written over */
+#define DECODE_IMPORTS 8u /* IMPORT and IMPORTFRAMES: the most of each */
+#define FRAME_ROW_ALIGN 128u /* an imported frame's memory: rows and columns of any layout fit in */
+#define FRAME_HEIGHT_ALIGN 64u
+#define FRAME_PLANES_FACTOR 2u /* bytes per pixel the memory gives: 4:2:0's 1.5 and its padding */
 
 struct decode
 {
@@ -132,6 +146,12 @@ struct decode
 	ULONG resignal_at;
 	BOOL resignaled;
 	LONG resignal_rc;
+	/* IMPORT and IMPORTFRAMES: the rig's own memory as the session's packets and frames */
+	ULONG import_packets, import_frames;
+	ULONG width, height; /* WIDTH and HEIGHT: the imported frames' shape */
+	ULONG chunk;         /* an input packet's bytes */
+	APTR blocks[2u * DECODE_IMPORTS]; /* the memory imported, freed after the session */
+	ULONG block_count;
 };
 
 /**
@@ -286,6 +306,13 @@ static BOOL split_config(struct decode *d, ULONG pad)
 	return taken != 0;
 }
 
+/**
+ * hexval() - The value of a hexadecimal digit.
+ *
+ * @c: the character
+ *
+ * Return: 0 to 15, -1 for any other character.
+ */
 static int hexval(char c)
 {
 	if (c >= '0' && c <= '9')
@@ -366,6 +393,12 @@ static BOOL load_ref(struct decode *d, const char *name)
 	return d->ref_count > 0;
 }
 
+/**
+ * digest_text() - A digest as 32 lower-case hexadecimal digits.
+ *
+ * @dig: the 16 bytes
+ * @out: receives the text and a terminating NUL
+ */
 static void digest_text(const UBYTE *dig, char out[33])
 {
 	static const char hex[] = "0123456789abcdef";
@@ -831,6 +864,133 @@ static void decode_resignal(struct decode *d)
 }
 
 /**
+ * import_memory() - A block of the rig's memory to import, on a cache line, kept to be freed after the session.
+ * @d:     the decode
+ * @bytes: how much
+ *
+ * Return: the memory, or NULL without (printed, the run failed).
+ */
+static APTR import_memory(struct decode *d, ULONG bytes)
+{
+	APTR block = d->block_count < 2u * DECODE_IMPORTS ? AllocVec(bytes + PICTURE_ALIGN, MEMF_PUBLIC | MEMF_FAST) : NULL;
+	if (block == NULL)
+	{
+		kv_str("fail", "no memory to import");
+		d->failed = TRUE;
+		return NULL;
+	}
+	d->blocks[d->block_count++] = block;
+	return (APTR)ALIGN_UP((ULONG)block, PICTURE_ALIGN);
+}
+
+/**
+ * import_frames() - IMPORTFRAMES: the rig's memory as the session's output frames, released to be filled.
+ * @d: the decode, its session open, nothing sent yet
+ *
+ * The memory is as large as any layout of a WIDTH x HEIGHT 4:2:0 frame:
+ * the backend describes the frame it makes of it.
+ */
+static void import_frames(struct decode *d)
+{
+	ULONG bytes = ALIGN_UP(d->width, FRAME_ROW_ALIGN) * ALIGN_UP(d->height, FRAME_HEIGHT_ALIGN) * FRAME_PLANES_FACTOR;
+	ULONG imported = 0;
+	for (; imported < d->import_frames && !d->failed; imported++)
+	{
+		APTR memory = import_memory(d, bytes);
+		struct VCFrame *frame = memory != NULL ? VC_ImportFrame(d->s, VCS_Output, memory) : NULL;
+		if (frame == NULL)
+			break;
+		VC_ReleaseFrame(d->s, frame); /* an import starts in the client's hands: to the decoder with it */
+	}
+	kv_unum("decode.imported_frames", imported);
+	if (imported != d->import_frames && !d->failed)
+	{
+		kv_str("fail", "VC_ImportFrame refused the memory");
+		d->failed = TRUE;
+	}
+}
+
+/**
+ * import_packets() - IMPORT: the rig's memory as the session's input packets.
+ * @d:       the decode, its session open, nothing sent yet
+ * @packets: where the packets go, DECODE_IMPORTS of them at most
+ *
+ * Return: how many were imported; fewer than IMPORT failed the run.
+ */
+static ULONG import_packets(struct decode *d, struct VCPacket **packets)
+{
+	ULONG imported = 0;
+	for (; imported < d->import_packets && !d->failed; imported++)
+	{
+		APTR memory = import_memory(d, d->chunk);
+		packets[imported] = memory != NULL ? VC_ImportPacket(d->s, VCS_Input, memory, d->chunk) : NULL;
+		if (packets[imported] == NULL)
+			break;
+	}
+	kv_unum("decode.imported_packets", imported);
+	if (imported != d->import_packets && !d->failed)
+	{
+		kv_str("fail", "VC_ImportPacket refused the memory");
+		d->failed = TRUE;
+	}
+	return imported;
+}
+
+/**
+ * decode_import() - IMPORT and IMPORTFRAMES: the rig's own memory as the session's packets and frames.
+ * @d: the decode, its session open, nothing sent yet
+ *
+ * Everything is imported before the first send, as the library asks; the
+ * imported packets start in the client's hands, so each is then filled and
+ * sent.  A refused import fails the run.
+ */
+static void decode_import(struct decode *d)
+{
+	struct VCPacket *packets[DECODE_IMPORTS];
+	if (d->import_packets > DECODE_IMPORTS || d->import_frames > DECODE_IMPORTS)
+	{
+		kv_str("fail", "IMPORT and IMPORTFRAMES: 8 at most");
+		d->failed = TRUE;
+		return;
+	}
+	ULONG imported = import_packets(d, packets);
+	import_frames(d);
+	for (ULONG i = 0; i < imported && !d->failed; i++)
+		fill_packet(d, packets[i]);
+}
+
+/**
+ * decode_backends() - Each backend's state while the session is open: open.backend.N.name, .sessions, .interface.
+ *
+ * A backend brings its hardware up for a session and may take it down once
+ * the library's last opener has gone: this is the state to compare with.
+ */
+static void decode_backends(void)
+{
+	struct VCInfo info;
+	for (ULONG n = 0;; n++)
+	{
+		memset(&info, 0, sizeof(info));
+		info.Size = sizeof(info);
+		if (VC_GetBackendInfo(n, &info) != 0)
+			break;
+		kv_str(kv_at("open.backend", n, "name"), (const char *)info.Backend);
+		kv_unum(kv_at("open.backend", n, "sessions"), info.Sessions);
+		kv_str(kv_at("open.backend", n, "interface"), (const char *)info.Interface);
+	}
+}
+
+/**
+ * decode_free_imports() - The memory IMPORT and IMPORTFRAMES gave, back once the session is closed.
+ * @d: the decode, its session closed
+ */
+static void decode_free_imports(struct decode *d)
+{
+	while (d->block_count != 0)
+		FreeVec(d->blocks[--d->block_count]);
+}
+
+/**
  * decode_loop() - Collect, feed, wait, until the end, a failure or FRAMES.
  * @d: the decode
  */
@@ -988,6 +1148,10 @@ int do_decode(struct tool *t, LONG *args)
 	d.keep = args[ARG_KEEP] != 0;
 	d.keep_sessions_min = NO_LIMIT;
 	d.resignal_at = arg_num(args, ARG_RESIGNAL, 0);
+	d.import_packets = arg_num(args, ARG_IMPORT, 0);
+	d.import_frames = arg_num(args, ARG_IMPORTFRAMES, 0);
+	d.width = arg_num(args, ARG_WIDTH, 0);
+	d.height = arg_num(args, ARG_HEIGHT, 0);
 	t->backend = arg_str(args, ARG_BACKEND);
 	md5_init(&d.in_md5);
 	ULONG codec = codec_of(arg_str(args, ARG_ENCODING), file);
@@ -1090,12 +1254,13 @@ int do_decode(struct tool *t, LONG *args)
 	/* a native decoder session: the backend's own packets (an access unit mostly fits whole when framed; MJPEG takes a
 	   whole picture per packet, so a JPEG file goes in one) */
 	LONG err = 0;
-	ULONG chunk = arg_num(args, ARG_PACKET, d.framed ? 262144u : codec == VCC_MJPEG && d.file_size > 65536u ? d.file_size : 65536u);
+	d.chunk = arg_num(args, ARG_PACKET, d.framed ? 262144u : codec == VCC_MJPEG && d.file_size > 65536u ? d.file_size : 65536u);
 	ULONG rate = d.framed && !d.norate ? d.fps : 0u;
 	d.s = VC_OpenSessionTags(VCA_Codec, codec, VCA_Kind, VCK_Decoder, VCA_SigTask, (ULONG)t->waiter.task, VCA_SigMask, waiter_sigmask(&t->waiter),
 	                         VCA_Framed, (ULONG)d.framed, VCA_FrameRateNum, rate, VCA_FrameRateDen, 1, VCA_InputCount, DECODE_PACKETS,
-	                         VCA_InputSize, chunk, VCA_OutputFormat, d.outfmt, BACKEND_TAG(t), VCA_Extradata, (ULONG)d.config,
-	                         VCA_ExtradataSize, d.config_len, VCA_CodecTag, codec_tag, VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                         VCA_InputSize, d.chunk, VCA_OutputFormat, d.outfmt, BACKEND_TAG(t), VCA_Extradata, (ULONG)d.config,
+	                         VCA_ExtradataSize, d.config_len, VCA_CodecTag, codec_tag, VCA_Width, d.width, VCA_Height, d.height,
+	                         VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	kv_str("decode.session", d.s != NULL ? "open" : "refused");
 	if (d.s == NULL)
 	{
@@ -1105,11 +1270,14 @@ int do_decode(struct tool *t, LONG *args)
 		goto out_files;
 	}
 	u32 t_start = get_time();
+	decode_import(&d);
 	decode_loop(&d);
 	keep_release(&d);
 	rc = decode_summary(&d, get_time() - t_start);
+	decode_backends();
 	VC_CloseSession(d.s);
 	d.s = NULL;
+	decode_free_imports(&d);
 out_files:
 	if (d.outfile != 0)
 		Close(d.outfile);

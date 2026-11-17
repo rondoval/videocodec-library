@@ -6,10 +6,15 @@ import numpy as np
 import pytest
 
 from vchiqtest.material import ffmpeg
-from vchiqtest.pictures import best_psnr, load_ppm, psnr, ref_rgb, rgb565_pixels, y_planes
+from vchiqtest.pictures import best_psnr, load_ppm, pattern, psnr, ref_rgb, rgb565_pixels, y_planes
 from emu68test.results import expect
+from test_encoder import H as BARS_H, W as BARS_W, bars
 from vchiqtest.tools import (assert_clean, assert_nothing_left, derived, judge_screen_bars, picture_bars, status, still_decode,
                            still_reference, still_rgb, still_time, vctest)
+
+
+VCERR_TIMEOUT = -7
+BAR = 2                 # the bar SOURCE takes: cyan, inside the picture
 
 
 def fetch_ppm(device, remote, artifacts, name):
@@ -21,6 +26,7 @@ def fetch_ppm(device, remote, artifacts, name):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VC_DecodeImage", "VCA_Data", "VCA_Length", "VCA_Dest", "VCA_OutputPitch")
 def test_jpeg_decode(device, material, baselines, artifacts):
     """VC_DecodeImage of a 1920x1080 baseline JPEG, against ffmpeg's decode; its time."""
     r = vctest(device, f"IMAGE {material.ram('pic.jpg')} OUT RAM:hw/pic.ppm")
@@ -56,6 +62,7 @@ def frame0_src(material):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VC_ConvertImage", "VCA_InputPitch")
 def test_convert_rgb16_720p(device, material, baselines, artifacts):
     """VC_ConvertImage: I420 1080p to RGB16 720p, against ffmpeg's."""
     frame = derived(device, material, "frame.i420")
@@ -112,6 +119,7 @@ def test_convert_camera_formats(device, material, baselines, artifacts, name, w,
 
 
 @pytest.mark.parametrize("name, w, h", [("frame640.yuyv", 640, 480), ("frame720.yuyv", 1280, 720)], ids=["640x480", "1280x720"])
+@pytest.mark.covers("VC_ImportFrame")
 def test_converter_session_rate(device, material, baselines, artifacts, record_property, name, w, h):
     """A camera's YUYV through a converter session into a screen's BGRA32, 150 times: at least 30 a second, what a preview needs."""
     r = vctest(device, f"CONVERT {material.ram(name)} WIDTH {w} HEIGHT {h} FORMAT YUYV OUTFORMAT BGRA32 COUNT 150 OUT RAM:hw/rate.raw", 120)
@@ -133,6 +141,7 @@ def test_converter_refuses_unlisted(device, material):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VC_EncodeImage", "VCA_DestSize", "VCA_Quality")
 def test_jpeg_encode(device, material, baselines, artifacts, record_property):
     """VC_EncodeImage: a 1080p frame to a JPEG at quality 80, which ffmpeg decodes back close to the frame."""
     frame = derived(device, material, "frame.i420")
@@ -266,6 +275,7 @@ HEADERS = {  # name: codec, width, height, transparency, frames, as VC_GetImageI
 
 @pytest.mark.slow
 @pytest.mark.parametrize("name", list(HEADERS), ids=list(HEADERS))
+@pytest.mark.covers("VC_GetImageInfo")
 def test_image_header(device, material, name):
     """VC_GetImageInfo(): codec, size, transparency and frames as the header says."""
     extra = "ENCODING TGA" if name.endswith(".tga") else ""
@@ -291,6 +301,34 @@ def test_example_viewer(device, material):
     rc, prog = device.run_text("VCShow", material.ram("prog.jpg"), timeout=30)
     assert rc == 5, f"return code {rc}"
     expect(prog, r"does not decode this picture", "VCShow's refusal")
+
+
+@pytest.mark.covers("VCA_Timeout")
+def test_image_call_gives_up_at_its_timeout(device, material):
+    """VCA_Timeout of 1 ms on a 1080p JPEG: the call gives up with VCERR_TIMEOUT (-7); nothing stays behind, and the
+    next call decodes."""
+    r = vctest(device, f"IMAGE {material.ram('pic.jpg')} OUT RAM:hw/timeout.ppm TIMEOUT 1", 60)
+    assert r.num("image.timeout_ms") == 1
+    assert r.num("image.rc") == VCERR_TIMEOUT, f"VC_DecodeImage {r.kv.get('image.rc')}: {r.kv.get('fail')}"
+    time.sleep(2)  # the VPU's late answer, if it comes, comes now
+    assert_clean(status(device))
+    again = vctest(device, f"IMAGE {material.ram('pic.jpg')} OUT RAM:hw/timeout.ppm", 60)
+    assert again.passed, f"the next call: {again.kv.get('fail')}"
+    device.delete("RAM:hw/timeout.ppm")
+
+
+@pytest.mark.covers("VCA_SourceRect")
+def test_convert_part_of_the_picture(device, artifacts):
+    """VCA_SourceRect: one bar of the colour bars converted alone fills the whole output, scaled up, in its colour."""
+    bar = pattern(BARS_W, BARS_H)[1][BAR]
+    x, y, w, h = int(bar.x) + 4, int(bar.y) + 4, int(bar.w) - 8, int(bar.h) - 8
+    r = vctest(device, f"CONVERT {bars(device, 'BGRA32')} WIDTH {BARS_W} HEIGHT {BARS_H} FORMAT BGRA32 OUTFORMAT RGB24 "
+                       f"OUTWIDTH 64 OUTHEIGHT 64 SOURCE {x},{y},{w},{h} OUT RAM:hw/part.ppm", 60)
+    assert r.passed, f"VC_ConvertImage {r.kv.get('convert.rc')}: {r.kv.get('fail')}"
+    assert r.kv.get("convert.source") == f"{x},{y},{w},{h}"
+    pic = fetch_ppm(device, "RAM:hw/part.ppm", artifacts, "part.ppm").astype(np.float64)
+    mean, spread = pic.reshape(-1, 3).mean(axis=0), pic.reshape(-1, 3).std(axis=0).max()
+    assert np.abs(mean - np.array(bar.rgb)).max() <= 8 and spread <= 6, f"mean {mean.round(1)}, wanted {bar.rgb}, std {spread:.1f}"
 
 
 @pytest.mark.smoke

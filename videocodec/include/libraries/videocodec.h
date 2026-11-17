@@ -571,7 +571,7 @@ struct VCSession; /* opaque */
 #define VCA_FrameRateNum (VCA_Base + 21)    /* frame rate of the input; a framed decoder assumes it too [unknown] */
 #define VCA_FrameRateDen (VCA_Base + 22)    /* 30000/1001 = 29.97 fps */
 #define VCA_Bitrate (VCA_Base + 23)         /* bits per second [backend's] */
-#define VCA_RateControl (VCA_Base + 27)     /* VCRC_* [backend's] */
+#define VCA_RateControl (VCA_Base + 27)     /* VCRC_* [backend's]; videocore.codec refuses VCRC_CBR (VCERR_UNSUPPORTED) */
 #define VCA_KeyInterval (VCA_Base + 26)     /* pictures from one key frame to the next [backend's] */
 #define VCA_Profile (VCA_Base + 24)         /* VCP_* [backend's] */
 #define VCA_Level (VCA_Base + 25)           /* H.264 level times ten: 31, 40, 41, 42 [backend's] */
@@ -584,6 +584,6 @@ struct VCSession; /* opaque */
 #define VCA_Length (VCA_Base + 35)   /* bytes at VCA_Data, when compressed */
 #define VCA_Dest (VCA_Base + 36)     /* the destination: a picture, or room for compressed bytes */
 #define VCA_DestSize (VCA_Base + 37) /* bytes at VCA_Dest, when compressed */
-#define VCA_Timeout (VCA_Base + 38)  /* milliseconds each pass may wait [the backend's: 5000 for videocore.codec] */
+#define VCA_Timeout (VCA_Base + 38)  /* milliseconds each pass may wait [the backend's: 5000 for videocore.codec]; the picture on the hardware may still end before VCERR_TIMEOUT comes */
 
 #endif /* LIBRARIES_VIDEOCODEC_H */

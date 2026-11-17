@@ -128,6 +128,13 @@ ULONG raw_bytes(ULONG f, ULONG w, ULONG h)
 	return w * h * fmt_bpp(f);
 }
 
+/**
+ * align32() - Round up to a multiple of 32.
+ *
+ * @v: the value
+ *
+ * Return: the rounded value.
+ */
 static ULONG align32(ULONG v)
 {
 	return (v + 31u) & ~31u;

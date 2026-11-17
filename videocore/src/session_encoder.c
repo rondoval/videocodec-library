@@ -238,16 +238,37 @@ static LONG encoder_formats(struct vc_session *session, BOOL jpeg)
 }
 
 /**
+ * h264_params() - Check an H.264 encoder's own parameters and fill in the defaults.
+ * @params: the session's parameters
+ *
+ * The encoder runs at 30 frames per second unless told.  The firmware's
+ * encoder takes no constant bit rate: with it set, its input port refuses to
+ * be enabled (docs/firmware-facts.md), so the open says so instead.
+ *
+ * Return: 0, VCERR_UNSUPPORTED for VCRC_CBR, VCERR_BADPARAM for a level that does not exist.
+ */
+static LONG h264_params(struct VCSessionParams *params)
+{
+	if (params->FrameRate.Den == 0)
+	{
+		params->FrameRate.Num = 30;
+		params->FrameRate.Den = 1;
+	}
+	if (params->RateControl == VCRC_CBR)
+		return VCERR_UNSUPPORTED;
+	return h264_level_mmal(params->Level) != 0 ? 0 : VCERR_BADPARAM;
+}
+
+/**
  * encoder_params() - Check an encoder's parameters and fill in the defaults.
  * @session: an encoder session
  * @jpeg:    JPEG, else H.264
  *
- * The input pictures' layout is resolved; H.264 runs at 30 frames per second
- * unless told.
+ * The input pictures' layout is resolved; H.264's own are h264_params()'.
  *
- * Return: 0, VCERR_UNSUPPORTED for another codec or an input format the
- * encoder does not read (codec_reads()), VCERR_BADPARAM for a size, pitch or
- * level that does not exist.
+ * Return: 0, VCERR_UNSUPPORTED for another codec, an input format the
+ * encoder does not read (codec_reads()) or a constant bit rate,
+ * VCERR_BADPARAM for a size, pitch or level that does not exist.
  */
 static LONG encoder_params(struct vc_session *session, BOOL jpeg)
 {
@@ -266,12 +287,7 @@ static LONG encoder_params(struct vc_session *session, BOOL jpeg)
 		if (error != 0)
 			return error;
 	}
-	if (params->FrameRate.Den == 0)
-	{
-		params->FrameRate.Num = 30;
-		params->FrameRate.Den = 1;
-	}
-	return h264_level_mmal(params->Level) != 0 ? 0 : VCERR_BADPARAM;
+	return h264_params(params);
 }
 
 /**

@@ -61,7 +61,16 @@ enum
 static const ULONG bar_colours[] = {0xFFFFFF, 0xFFFF00, 0x00FFFF, 0x00FF00, 0xFF00FF, 0xFF0000, 0x0000FF, 0x101010};
 #define BARS (sizeof(bar_colours) / sizeof(bar_colours[0]))
 
-/* The ramp's columns x0 to x1 - 1, rows y0 to y1 - 1. */
+/**
+ * ramp_draw() - The ramp's columns @x0 to @x1 - 1, rows @y0 to @y1 - 1.
+ *
+ * @rp:    the screen's rastport
+ * @width: the screen width: the ramp runs black to white across it
+ * @x0:    first column
+ * @x1:    end column, exclusive
+ * @y0:    first row
+ * @y1:    end row, exclusive
+ */
 static void ramp_draw(struct RastPort *rp, ULONG width, ULONG x0, ULONG x1, ULONG y0, ULONG y1)
 {
 	for (ULONG x = x0; x < x1; x++)
@@ -71,7 +80,14 @@ static void ramp_draw(struct RastPort *rp, ULONG width, ULONG x0, ULONG x1, ULON
 	}
 }
 
-/* The bars and the ramp, as pattern() lays them out. */
+/**
+ * pattern_draw() - The bars and the ramp, as pattern() lays them out.
+ *
+ * @rp:     the screen's rastport
+ * @width:  the screen width
+ * @height: the screen height
+ * @bar_h:  the bars' height; the ramp fills the rest
+ */
 static void pattern_draw(struct RastPort *rp, ULONG width, ULONG height, ULONG bar_h)
 {
 	ULONG bar_w = width / BARS / 16u * 16u;
@@ -82,7 +98,15 @@ static void pattern_draw(struct RastPort *rp, ULONG width, ULONG height, ULONG b
 	ramp_draw(rp, width, 0, width, bar_h, height);
 }
 
-/* Rows @top to @end - 1 of the bitmap, random bytes: straight into it, a word at a time. */
+/**
+ * noise_draw() - Rows @top to @end - 1 of the bitmap, random bytes: straight into it, a word at a time.
+ *
+ * @screen: the screen
+ * @top:    first row
+ * @end:    end row, exclusive
+ * @width:  the screen width in pixels
+ * @seed:   the generator's state, updated
+ */
 static void noise_draw(struct Screen *screen, ULONG top, ULONG end, ULONG width, ULONG *seed)
 {
 	struct BitMap *bm = screen->RastPort.BitMap;
@@ -107,7 +131,18 @@ static void noise_draw(struct Screen *screen, ULONG top, ULONG end, ULONG width,
 	*seed = x;
 }
 
-/* Up and showing: the block or the noise moves on until @seconds or Ctrl-C, the screen stepping back on the way if asked. */
+/**
+ * screen_run() - Up and showing: the block or the noise moves on until @seconds or Ctrl-C, the screen stepping back on
+ *   the way if asked.
+ *
+ * @t:       the tool
+ * @screen:  the open screen
+ * @height:  the screen height
+ * @bar_h:   the bars' height
+ * @seconds: how long, 0 until Ctrl-C
+ * @noise:   noise instead of the moving block
+ * @back:    second at which to send the screen to the back for a while, 0 never
+ */
 static void screen_run(struct tool *t, struct Screen *screen, ULONG height, ULONG bar_h, ULONG seconds, BOOL noise, ULONG back)
 {
 	struct RastPort *rp = &screen->RastPort;
@@ -152,7 +187,12 @@ static void screen_run(struct tool *t, struct Screen *screen, ULONG height, ULON
 	kv_unum("screen.steps", steps);
 }
 
-/* A screen with nothing to draw: until @seconds or Ctrl-C. */
+/**
+ * plain_wait() - A screen with nothing to draw: until @seconds or Ctrl-C.
+ *
+ * @t:       the tool
+ * @seconds: how long, 0 until Ctrl-C
+ */
 static void plain_wait(struct tool *t, ULONG seconds)
 {
 	u32 start = get_time();

@@ -26,7 +26,7 @@
 extern struct Library *VideoCodecBase;
 
 #define IDLE_MS 5000 /* nothing moved for this long: stuck */
-#define ARGS_MAX 24  /* the longest template's entries; parse_rest() refuses a longer one */
+#define ARGS_MAX 28  /* the longest template's entries; parse_rest() refuses a longer one */
 
 /* What every command gets */
 struct tool
@@ -57,6 +57,8 @@ extern const char datatype_template[];
 extern const char page_template[];
 extern const char screen_template[];
 extern const char hold_template[];
+extern const char device_template[];
+extern const char probe_template[];
 
 int do_status(struct tool *t, LONG *args);
 int do_codecs(struct tool *t, LONG *args);
@@ -73,5 +75,7 @@ int do_datatype(struct tool *t, LONG *args);
 int do_page(struct tool *t, LONG *args);
 int do_screen(struct tool *t, LONG *args);
 int do_hold(struct tool *t, LONG *args);
+int do_device(struct tool *t, LONG *args);
+int do_probe(struct tool *t, LONG *args);
 
 #endif /* VCTEST_COMMANDS_H */

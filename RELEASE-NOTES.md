@@ -1,7 +1,17 @@
 # Release notes - emu68-vchiq-library 0.6
 
-Nothing changes for users: the drivers, the library and the tools work as in 0.5.
+- **An image call that gives up no longer stops the VideoCore.** A picture
+  decode, conversion or JPEG encode that ran past its `VCA_Timeout` closed its
+  work in the middle of the picture, and the VideoCore then answered nothing
+  more, video and sound included, until Ctrl-Amiga-Amiga. The call now lets the
+  picture end first (up to five seconds more) and then returns its timeout.
+  Programs that leave the timeout at its default of five seconds were not
+  likely to meet this.
 
+- **For programmers: no constant bit rate.** `VCA_RateControl` with `VCRC_CBR`
+  is refused when the encoder session opens, with `VCERR_UNSUPPORTED`. The
+  VideoCore's encoder never took it: such a session failed at its first
+  picture. `VCRC_VBR` and the default work as before.
 - **For developers: the test suite runs on the stack's common harness.** The
   suite in `tests/` builds on emu68-common's `emu68test` (emu68-common 2.4), and
   is started with `tests/run.sh`. What is VideoCore's own is the Python package
@@ -10,6 +20,15 @@ Nothing changes for users: the drivers, the library and the tools work as in 0.5
 - **For developers: the rigs' output.** `VCTest` and `VPUPlay` print through
   emu68-common's grammar library: each run now also names its `command`, and
   ends with `checks` and `checks_failed` before the verdict.
+- **For developers: code gates and traceability.** `tests/run.sh host` checks,
+  without an Amiga, that every function has its kernel-doc comment and stays
+  within the complexity limit, and writes `tests/TRACEABILITY.md`: every
+  library function, device command, tag and VCGrab settings key with the
+  tests that cover it: every one of the 74 has a test. For the ten that had
+  none, `VCTest` gained `DEVICE` (the device's own commands) and `PROBE` (a
+  codec backend's refusals, called directly), and options for the encoder's
+  profile, level, rate control and colour space, an image call's timeout, the
+  part of a picture a conversion reads, and imported packets and frames.
 - **The suite keeps the machine's own files.** Before it first replaces a file
   on the Amiga, it copies the machine's own to `tests/.machine/` on the host.
 

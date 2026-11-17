@@ -22,12 +22,13 @@ static const char *const perf_names[VCPERF_SLOT_COUNT] = {"rx_parked", "rx_paylo
                                                            "mmal_open", "mmal_close", "component",  "destroy",    "import",
                                                            "release"};
 
+LONG __attribute__((used, section(".text.entry"))) doNotExecute(void);
 /**
  * doNotExecute() - The file's first code: run as a program, it returns at once.
  *
+ *
  * Return: -1.
  */
-LONG __attribute__((used, section(".text.entry"))) doNotExecute(void);
 LONG __attribute__((used, section(".text.entry"))) doNotExecute(void)
 {
 	return -1;

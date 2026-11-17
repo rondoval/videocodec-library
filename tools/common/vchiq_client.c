@@ -212,6 +212,19 @@ BOOL vq_next(struct vq_service *s, UBYTE **data, ULONG *len, ULONG timeout_ms)
 }
 
 /**
+ * vq_repost() - Post every read again, after the device gave them all back (CMD_FLUSH).
+ * @s: the service, open, each of its reads collected
+ *
+ * The first read posted gets the next message, as after vq_open().
+ */
+void vq_repost(struct vq_service *s)
+{
+	for (ULONG k = 0; k < VQ_READS; k++)
+		post_read(s, k);
+	s->next = 0;
+}
+
+/**
  * vq_consume() - Done with the message vq_next() gave: its read goes out again.
  * @s: the service, open
  */

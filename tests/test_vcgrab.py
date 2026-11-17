@@ -26,7 +26,7 @@ ISP_READING = "bt601/full"  # what the ISP makes of RGB, whatever colour space i
 REPORT = re.compile(r"(\d+) pictures, (\d+)x(\d+), (\d+) ms, (\d+) ticks dropped, (\d+) paused, (\d+) bytes, 68k busy (\d+)%, (\d+) MiB free")
 KEYS = ("pictures", "width", "height", "ms", "dropped", "paused", "bytes", "busy", "free")
 CTRL_ALT = 0x0008 | 0x0010  # IEQUALIFIER_CONTROL, IEQUALIFIER_LALT
-KEY_R, KEY_S, KEY_G, KEY_F, KEY_H, KEY_V = 0x13, 0x21, 0x24, 0x23, 0x25, 0x34  # raw key codes
+KEY_R, KEY_S, KEY_G, KEY_F, KEY_H, KEY_J, KEY_V = 0x13, 0x21, 0x24, 0x23, 0x25, 0x26, 0x34  # raw key codes
 PREFS = "ENV:VCGrab.prefs"
 DISK = os.environ.get("VCGRAB_DISK")  # a volume with room, "Stuff:": the tests that write to a disk
 PAST_2_GIB_SECONDS = 800  # noise fills 3.1 MB/s
@@ -697,6 +697,8 @@ def a_take(device, start=KEY_R, stop=KEY_S, seconds=3):
     time.sleep(2)
 
 
+@pytest.mark.covers("settings: TO", "settings: SIZE", "settings: FPS", "settings: BITRATE", "settings: STARTKEY",
+                    "settings: STOPKEY")
 def test_saved_settings(device, artifacts, record_property):
     """What the settings file says is what the commodity does: the name, the size, the rate, the bit rate and the keys."""
     saved = "TO = RAM:hw/saved\nSIZE = 1280x720\nFPS = 25\nBITRATE = 2000\nSTARTKEY = ctrl alt f\nSTOPKEY = ctrl alt h\n"
@@ -708,6 +710,20 @@ def test_saved_settings(device, artifacts, record_property):
     times = packet_times(mkv)
     record_property("picture times", times[:4])
     assert times[1] - times[0] == 40, f"not 25 pictures a second: {times[:4]}"
+
+
+@pytest.mark.covers("settings: STILLKEY")
+def test_a_saved_still_key(device, artifacts):
+    """STILLKEY in the settings file takes the still; the default key no longer does."""
+    with commodity(device, saved="TO = RAM:hw/kept-still\nSTILLKEY = ctrl alt j\n"):
+        hot_key(device, KEY_G)
+        time.sleep(2)
+        taken_by_default = device.size_of("RAM:hw/kept-still-0001.jpg") >= 0
+        hot_key(device, KEY_J)
+        time.sleep(2)
+    assert not taken_by_default, "the default still key took a still"
+    still = fetch(device, artifacts, "RAM:hw/kept-still-0001.jpg", "kept-still.jpg")
+    assert decode_errors(still) == ""
 
 
 def test_arguments_beat_the_saved_settings(device, artifacts):
@@ -742,6 +758,7 @@ def test_commodity_needs_no_name(device, artifacts):
     assert stream_fields(fetch(device, artifacts, "RAM:grab-0001.mkv", "default.mkv"))["width"] == str(W)
 
 
+@pytest.mark.covers("settings: SECONDS")
 def test_a_key_turned_off(device, artifacts):
     """NONE means no such key: the take ends by its time limit, not by the Stop key that was the default."""
     with commodity(device, saved="TO = RAM:hw/limit\nSTOPKEY = NONE\nSECONDS = 2\n"):

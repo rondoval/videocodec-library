@@ -163,6 +163,7 @@ BOOL shape_set_native(struct vc_session *session, ULONG format, u32 width, u32 h
 		return FALSE;
 	shape->format = format;
 	shape->dest = *dest;
+	shape_view_whole(shape);
 	shape->resolved = TRUE;
 	return TRUE;
 }

@@ -21,6 +21,14 @@
   session overrules what the stream says; on a converter session it says what
   the YUV input holds, which without it is read as full-range BT.601, as
   before. `VC_ConvertImage()` is unchanged.
+- **For programmers: `VCA_DestRect` puts the picture where it says.** The
+  rectangle's size was honoured, its position was not: the picture always
+  stood at the frame's top left. It now stands where the rectangle says, so a
+  player can centre a picture in a screen's bitmap or in a frame of the
+  library's own and keep what it drew beside it. This needs a packed pixel
+  format; `VCA_KeepAspect` in an I420 frame keeps the shape and puts the
+  picture at the top left, as before. `libraries/videocodec.h` has the
+  details.
 - **For programmers: back to the library's own frames.** A decoder or
   converter session whose output frames were imported (a screen's bitmap)
   can go back to frames of the library's own: give `VCA_OutputCount` with the

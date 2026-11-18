@@ -17,6 +17,8 @@
 #include <proto/videocodec.h>
 #endif
 
+#include <string.h>
+
 #include <dos/dos.h>
 #include <exec/memory.h>
 
@@ -32,9 +34,10 @@
 
 #define CONVERT_INPUTS 3      /* copies of the picture a converter session cycles through, so the VPU always has one */
 #define CONVERT_IDLE_MS 5000u /* a converter session with nothing back this long has stalled */
-#define RECT_NUMBERS 4u        /* SOURCE: x,y,w,h */
+#define RECT_NUMBERS 4u        /* SOURCE and PLACE: x,y,w,h */
+#define PLACE_FILL 0x55        /* what a frame holds before a picture is decoded to a place in it */
 
-const char image_template[] = "FILE/A,OUT/A,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,ENCODING/K,BACKEND/K,MISALIGN/S,TIMEOUT/K/N";
+const char image_template[] = "FILE/A,OUT/A,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,ENCODING/K,BACKEND/K,MISALIGN/S,TIMEOUT/K/N,PLACE/K";
 const char tojpeg_template[] = "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,QUALITY/N,BACKEND/K,MISALIGN/S";
 const char convert_template[] =
     "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,BACKEND/K,MISALIGN/S,COUNT/N,SOURCE/K,COLORSPACE/K";
@@ -49,7 +52,8 @@ enum
 	IMG_ENCODING,
 	IMG_BACKEND,
 	IMG_MISALIGN,
-	IMG_TIMEOUT
+	IMG_TIMEOUT,
+	IMG_PLACE
 };
 
 enum
@@ -138,7 +142,45 @@ static BOOL image_header(const UBYTE *data, ULONG len, ULONG codec, struct VCIma
 }
 
 /**
- * do_image() - IMAGE: one still through VC_DecodeImage(), straight or through the converter as the library sees fit.
+ * rect_tag() - An argument x,y,w,h as a rectangle, and the tag that carries it.
+ * @text: the argument, or NULL for none
+ * @key:  the key its outcome is printed under
+ * @tag:  the tag a rectangle goes by
+ * @rect: filled from the argument
+ *
+ * Prints under @key: the rectangle taken, "all" without one, "ignored" for
+ * text that is not four numbers.
+ *
+ * Return: @tag with @rect filled, or TAG_IGNORE: the tag the call takes in its place.
+ */
+static Tag rect_tag(const char *text, const char *key, Tag tag, struct VCRect *rect)
+{
+	LONG numbers[RECT_NUMBERS];
+	ULONG count = 0;
+	const char *at = text;
+	while (at != NULL && count < RECT_NUMBERS)
+	{
+		LONG used = StrToLong((CONST_STRPTR)at, &numbers[count]);
+		if (used <= 0 || numbers[count] < 0)
+			break;
+		count++;
+		at = at[used] == ',' ? at + used + 1 : NULL;
+	}
+	if (count != RECT_NUMBERS)
+	{
+		kv_str(key, text != NULL ? "ignored" : "all");
+		return TAG_IGNORE;
+	}
+	rect->X = numbers[0];
+	rect->Y = numbers[1];
+	rect->Width = numbers[2];
+	rect->Height = numbers[3];
+	kv_str(key, text);
+	return tag;
+}
+
+/**
+ * do_image() - IMAGE: one still through VC_DecodeImage(), straight or through the converter as the library sees fit; with PLACE into a rectangle of a frame filled with PLACE_FILL.
  * @t:    the tool
  * @args: image_template's
  *
@@ -187,13 +229,17 @@ int do_image(struct tool *t, LONG *args)
 	kv_unum("image.out.width", ow);
 	kv_unum("image.out.height", oh);
 	kv_unum("image.out.pitch", f.Pitch[0]);
+	struct VCRect place;
+	Tag place_tag = rect_tag(arg_str(args, IMG_PLACE), "image.place", VCA_DestRect, &place);
+	if (place_tag != TAG_IGNORE)
+		memset(f.Data, PLACE_FILL, size); /* what is left of it beside the picture shows what the decode wrote */
 	LONG err = 0;
 	u32 t0 = get_time();
 	ULONG timeout_ms = arg_num(args, IMG_TIMEOUT, 0); /* 0: the backend's own */
 	kv_unum("image.timeout_ms", timeout_ms);
 	LONG r = VC_DecodeImageTags(codec != VCC_None ? VCA_Codec : TAG_IGNORE, codec, VCA_Data, (ULONG)data, VCA_Length, len, VCA_Dest,
 	                            (ULONG)f.Data, VCA_OutputFormat, fmt, VCA_OutputWidth, ow, VCA_OutputHeight, oh, VCA_OutputPitch, f.Pitch[0],
-	                            VCA_Timeout, timeout_ms, BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                            VCA_Timeout, timeout_ms, place_tag, (ULONG)&place, BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	u32 took = get_time() - t0;
 	kv_num("image.rc", r);
 	kv_unum("image.us", took);
@@ -461,41 +507,6 @@ out:
 	return rc;
 }
 
-/**
- * source_rect() - SOURCE x,y,w,h: the part of the picture a conversion reads (VCA_SourceRect).
- * @text: the argument, or NULL for all of the picture
- * @rect: filled from it
- *
- * Prints convert.source: the rectangle taken, "all" without one, "ignored"
- * for text that is not four numbers.
- *
- * Return: VCA_SourceRect with @rect filled, or TAG_IGNORE: the tag the call takes in its place.
- */
-static Tag source_rect(const char *text, struct VCRect *rect)
-{
-	LONG numbers[RECT_NUMBERS];
-	ULONG count = 0;
-	const char *at = text;
-	while (at != NULL && count < RECT_NUMBERS)
-	{
-		LONG used = StrToLong((CONST_STRPTR)at, &numbers[count]);
-		if (used <= 0 || numbers[count] < 0)
-			break;
-		count++;
-		at = at[used] == ',' ? at + used + 1 : NULL;
-	}
-	if (count != RECT_NUMBERS)
-	{
-		kv_str("convert.source", text != NULL ? "ignored" : "all");
-		return TAG_IGNORE;
-	}
-	rect->X = numbers[0];
-	rect->Y = numbers[1];
-	rect->Width = numbers[2];
-	rect->Height = numbers[3];
-	kv_str("convert.source", text);
-	return VCA_SourceRect;
-}
 
 /**
  * convert_arguments_ok() - Whether CONVERT's arguments name a picture and what to make of it.
@@ -574,7 +585,7 @@ int do_convert(struct tool *t, LONG *args)
 	LONG err = 0;
 	u32 t0 = get_time();
 	struct VCRect source;
-	Tag source_tag = source_rect(arg_str(args, CNV_SOURCE), &source);
+	Tag source_tag = rect_tag(arg_str(args, CNV_SOURCE), "convert.source", VCA_SourceRect, &source);
 	LONG r = VC_ConvertImageTags(VCA_Data, (ULONG)in.Data, VCA_Width, w, VCA_Height, h, VCA_InputFormat, fmt, VCA_InputPitch, in.Pitch[0],
 	                             source_tag, (ULONG)&source, VCA_Dest, (ULONG)out.Data, VCA_OutputFormat, ofmt, VCA_OutputWidth, ow,
 	                             VCA_OutputHeight, oh, VCA_OutputPitch, out.Pitch[0], BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);

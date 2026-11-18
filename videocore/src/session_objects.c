@@ -50,6 +50,7 @@ struct vc_object *object_new(struct vc_session *session, BOOL is_frame, APTR dat
 	Kprintf("[videocore] %s at %08lx, %ld bytes%s\n", is_frame ? "frame" : "packet", (ULONG)data, capacity, owned ? "" : ", the client's");
 	object->buffer.data = data;
 	object->buffer.room = owned ? ALIGN_UP(capacity, DMA_ALIGN_MIN) : capacity; /* dma_alloc() gives whole lines */
+	object->memory = data;
 	object->capacity = capacity;
 	object->is_frame = is_frame;
 	object->owned = owned;
@@ -80,7 +81,7 @@ void object_free(struct vc_session *session, struct vc_object *object)
 	struct VideoCoreBase *base = session->base;
 	struct ExecBase *SysBase = base->SysBase;
 	if (object->owned)
-		dma_free(base->mmal.pool, object->buffer.data);
+		dma_free(base->mmal.pool, object->memory);
 	FreeMem(object, sizeof(*object));
 }
 
@@ -216,21 +217,6 @@ void set_empty(struct vc_session *session, struct vc_set *set)
 	for (u32 i = 0; i < set->count; i++)
 		object_free(session, set->objects[i]);
 	set->count = 0;
-}
-
-/**
- * set_holds() - Whether every object of a set holds a buffer of a size.
- * @set:  the set
- * @size: the bytes each must hold
- *
- * Return: TRUE if none is smaller, as for an empty set.
- */
-static BOOL set_holds(const struct vc_set *set, u32 size)
-{
-	for (u32 i = 0; i < set->count; i++)
-		if (set->objects[i]->capacity < size)
-			return FALSE;
-	return TRUE;
 }
 
 /**
@@ -407,14 +393,57 @@ u32 output_set_count(const struct vc_session *session, u32 fallback)
 }
 
 /**
+ * view_fits() - Whether a frame over the client's memory can be given to the port by the shape's view.
+ * @session:  the session, its shape resolved
+ * @data:     the client's memory
+ * @capacity: its bytes
+ * @size:     the bytes the port takes from the view's start
+ *
+ * It holds the frame, and those bytes but for the view's tail; the view
+ * starts on a whole word; and a view that reaches past the frame is taken
+ * only where the VPU works in the memory itself: a bulk would write the tail.
+ *
+ * Return: TRUE if it can.
+ */
+BOOL view_fits(struct vc_session *session, APTR data, u32 capacity, u32 size)
+{
+	const struct vc_shape *shape = &session->shape;
+	u8 *view = (u8 *)data + shape->view_start;
+	if (capacity < shape->geometry.size || capacity + shape->view_tail < shape->view_start + size || ((u32)view & 3u) != 0)
+		return FALSE;
+	return shape->view_tail == 0 || mmal_importable(session->base, view, size, TRUE);
+}
+
+/**
+ * view_place() - Point a frame object's buffer at the shape's view of its frame.
+ * @object: a frame object, detached
+ * @shape:  the output shape, resolved
+ *
+ * The backend's own frame is laid into its memory so that the view starts
+ * on a cache line, as the VPU's work in it needs (output_set_prepare() left
+ * the room); the client's stays where it is.
+ */
+void view_place(struct vc_object *object, const struct vc_shape *shape)
+{
+	u8 *frame = object->memory;
+	if (object->owned)
+		frame += (0u - shape->view_start) & DMA_ALIGN_MIN_MASK;
+	object->pub.frame.Data = frame;
+	object->buffer.data = frame + shape->view_start;
+	object->buffer.room = object->owned ? ALIGN_UP(shape->view.size, DMA_ALIGN_MIN) : shape->view.size;
+}
+
+/**
  * output_set_prepare() - The output frames for session->shape: the client's must hold them, the backend's are made again.
  * @session: the session, its shape resolved, its output set detached
  * @count:   how many of the backend's own
- * @size:    the bytes of each, which becomes the set's buffer size
+ * @size:    the bytes the port takes of each, which becomes the set's buffer size: the shape's view, or more
  *
- * Either way the frames are described with the shape.
+ * The backend's own get room for the view's start on a cache line and for
+ * its tail.  Either way the frames are described with the shape and their
+ * buffers placed on its view.
  *
- * Return: 0, VCERR_BADPARAM for an imported frame too small, or VCERR_NOMEM.
+ * Return: 0, VCERR_BADPARAM for an imported frame that cannot hold the shape, or VCERR_NOMEM.
  */
 LONG output_set_prepare(struct vc_session *session, u32 count, u32 size)
 {
@@ -422,17 +451,21 @@ LONG output_set_prepare(struct vc_session *session, u32 count, u32 size)
 	const struct vc_shape *shape = &session->shape;
 	if (set->imported)
 	{
-		if (!set_holds(set, size))
-			return VCERR_BADPARAM;
-		set->size = size;
+		for (u32 i = 0; i < set->count; i++)
+			if (!view_fits(session, set->objects[i]->memory, set->objects[i]->capacity, size))
+				return VCERR_BADPARAM;
 	}
 	else
 	{
-		LONG error = set_fill(session, set, TRUE, count, size); /* made again for the size: the old ones may be too small */
+		u32 frame = umax(shape->geometry.size, shape->view_start + size) + (shape->view_start != 0 ? DMA_ALIGN_MIN : 0);
+		LONG error = set_fill(session, set, TRUE, count, frame); /* made again for the size: the old ones may be too small */
 		if (error != 0)
 			return error;
 	}
+	set->size = size;
 	set_shape_frames(set, &shape->geometry, shape->format, &shape->dest);
+	for (u32 i = 0; i < set->count; i++)
+		view_place(set->objects[i], shape);
 	return 0;
 }
 

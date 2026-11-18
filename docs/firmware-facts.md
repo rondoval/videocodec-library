@@ -94,6 +94,12 @@ be done. Add a fact here when a measurement finds one.
 * **ISP output formats.** RGB565, RGB24, BGR24, BGRA32, RGBA32, YUV420; never
   ARGB, so a 32-bit Picasso96 mode must be B8G8R8A8 or R8G8B8A8. Output alpha is
   always 255. The ISP does not dither: RGB565 bands on gradients.
+* **The ISP's place for a picture.** The ISP writes a picture at its buffer's
+  first pixel, in the size the output format's crop names: the crop's x and y
+  move nothing (seen on the Pi 4 with frames of the backend's own and with a
+  screen's bitmap). So the backend gives the ISP, of each frame, the part from
+  the picture's first pixel on (`shape_view_set()`); what the ISP leaves alone
+  beside the picture it leaves alone there too.
 * **ISP rows.** Whole groups of 32 pixels, heights even; I420 rows, in and out,
   whole 64 (its half-width chroma rows whole 32): it reads a 4000-pixel row as
   4032. The converter's own I420 input has such rows. The image decoder writes

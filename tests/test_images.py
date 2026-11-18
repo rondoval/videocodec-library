@@ -56,6 +56,20 @@ def test_jpeg_scaled(device, material, baselines, artifacts):
     baselines.check_near("jpeg_scaled_320.psnr_db", round(score, 1), higher=True, tolerance=2.0)
 
 
+@pytest.mark.covers("VCA_DestRect")
+def test_jpeg_decode_to_a_place(device, material, artifacts):
+    """VC_DecodeImage into a rectangle of a larger frame: the picture is scaled into the rectangle, where the
+    rectangle says, and what the frame held over it and left of its first row stays."""
+    x, y, w, h = 128, 120, 320, 240
+    r = vctest(device, f"IMAGE {material.ram('pic.jpg')} OUT RAM:hw/placed.ppm OUTWIDTH 640 OUTHEIGHT 480 PLACE {x},{y},{w},{h}")
+    assert r.passed, r.kv.get("fail")
+    pic = fetch_ppm(device, "RAM:hw/placed.ppm", artifacts, "placed.ppm")
+    score, _ = best_psnr(pic[y:y + h, x:x + w], ref_rgb(["-i", str(material.path("pic.jpg"))], w, h))
+    assert score > 30, f"the picture in the rectangle scores {score:.1f} dB against the host's"
+    fill = 0x55                 # VCTest's PLACE_FILL
+    assert (pic[:y] == fill).all() and (pic[y, :x] == fill).all(), "the frame was written before the rectangle"
+
+
 def frame0_src(material):
     """ffmpeg's input arguments for the host's copy of clip42's first frame."""
     return ["-f", "rawvideo", "-pix_fmt", "yuv420p", "-s", "1920x1080", "-i", str(material.path("frame0.i420"))]

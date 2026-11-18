@@ -60,7 +60,7 @@ Written by the suite's host tier (`run.sh host` rewrites it): every item the sui
 | VCA_OutputWidth | `test_encoder.py::test_scaled_through_the_isp` |
 | VCA_OutputHeight | `test_encoder.py::test_scaled_through_the_isp` |
 | VCA_OutputPitch | `test_images.py::test_jpeg_decode` |
-| VCA_DestRect | `test_datatype.py::test_pixels` |
+| VCA_DestRect | `test_datatype.py::test_pixels`, `test_images.py::test_jpeg_decode_to_a_place` |
 | VCA_KeepAspect | `test_players.py::test_pixel_aspect_on_screen` |
 | VCA_InputCount | `test_decoder.py::test_bit_exact` |
 | VCA_InputSize | `test_decoder.py::test_bit_exact` |

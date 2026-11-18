@@ -548,6 +548,17 @@ struct VCSession; /* opaque */
 #define VCA_OutputWidth (VCA_Base + 8)  /* pixels [the source's] */
 #define VCA_OutputHeight (VCA_Base + 9) /* rows [the source's] */
 #define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel] */
+/*
+ * VCA_DestRect: where the picture goes in the frame, and how large.  A place
+ * other than the frame's top left needs a packed pixel format (the planes of
+ * I420 cannot start at one place: VCERR_UNSUPPORTED) and a first pixel on a
+ * whole long word of the frame.  Only the rectangle is written where the
+ * codec works in the frame's memory itself: the library's own frames and
+ * video memory.  A frame of yours in other memory may be filled by copy, and
+ * then loses what it held from the rectangle's first pixel to its end.  A
+ * rectangle that stands in from a row's start and reaches the frame's last
+ * row is taken only in memory the codec works in itself (VCERR_BADPARAM).
+ */
 #define VCA_DestRect (VCA_Base + 11)    /* struct VCRect *: where the picture goes in the frame [all of it] */
 #define VCA_KeepAspect (VCA_Base + 13)  /* BOOL: fit the picture as shown (pixel aspect) in the frame, centred [FALSE: stretch] */
 

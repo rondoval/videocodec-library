@@ -124,6 +124,60 @@ static LONG shape_dest(const struct VCSessionParams *params, u32 source_w, u32 s
 }
 
 /**
+ * shape_view_whole() - The view of a shape whose picture stands at the frame's start: the frame.
+ * @shape: the shape, its geometry set
+ */
+void shape_view_whole(struct vc_shape *shape)
+{
+	shape->view = shape->geometry;
+	shape->view_start = 0;
+	shape->view_tail = 0;
+}
+
+/**
+ * shape_view_set() - Work out the ISP's view of a frame for the picture's place in it.
+ * @shape:           the shape, its format, geometry and dest set
+ * @bytes_per_pixel: of the format
+ * @free_place:      the place was the backend's choice (VCA_KeepAspect), not the client's
+ *
+ * The view starts at the picture's first pixel and has the frame's rows,
+ * each begun that far in: as many as the frame holds from there, an even
+ * number.  A picture that stands in from a row's start and reaches the
+ * frame's last row needs a view that ends past the frame, by the bytes it
+ * stands in; nothing is written there.
+ *
+ * A planar frame's planes cannot start at one place: the backend's own
+ * choice of a place becomes the frame's start there, the shape kept, and the
+ * client's is refused.
+ *
+ * Return: 0, VCERR_UNSUPPORTED for the client's place in a planar frame,
+ * VCERR_BADPARAM for a view the ISP cannot write.
+ */
+static LONG shape_view_set(struct vc_shape *shape, u32 bytes_per_pixel, BOOL free_place)
+{
+	const struct vc_geometry *geometry = &shape->geometry;
+	shape_view_whole(shape);
+	if (shape->dest.X == 0 && shape->dest.Y == 0)
+		return 0;
+	if (format_is_planar(shape->format))
+	{
+		shape->dest.X = 0;
+		shape->dest.Y = 0;
+		return free_place ? 0 : VCERR_UNSUPPORTED;
+	}
+
+	u32 start = (u32)shape->dest.Y * geometry->pitch[0] + (u32)shape->dest.X * bytes_per_pixel;
+	u32 rows = (geometry->size - start) / geometry->pitch[0] & ~1u;
+	if (rows < (u32)shape->dest.Height)
+		rows = ALIGN_UP((u32)shape->dest.Height, 2u);
+	if (!picture_geometry(shape->format, geometry->width, rows, geometry->pitch[0], &shape->view))
+		return VCERR_BADPARAM;
+	shape->view_start = start;
+	shape->view_tail = start + shape->view.size > geometry->size ? start + shape->view.size - geometry->size : 0;
+	return 0;
+}
+
+/**
  * shown_width() - The picture's width as shown: its pixels' aspect taken in.
  * @stream: the stream's shape
  *
@@ -188,8 +242,9 @@ LONG shape_resolve(struct vc_session *session)
 	shape->format = format;
 	shape->dest = dest;
 	shape->geometry = geometry;
-	shape->resolved = TRUE;
-	return 0;
+	error = shape_view_set(shape, bytes_per_pixel, params->KeepAspect != 0);
+	shape->resolved = error == 0;
+	return error;
 }
 
 /* ---- the ISP's output side ---------------------------------------------------------- */
@@ -270,7 +325,7 @@ static LONG isp_output_configure(struct vc_session *session)
 {
 	struct VideoCoreBase *base = session->base;
 	const struct vc_shape *shape = &session->shape;
-	const struct vc_geometry *geometry = &shape->geometry;
+	const struct vc_geometry *geometry = &shape->view; /* what the ISP is given of a frame */
 
 	LONG error = shape_resolve(session);
 	if (error == 0)
@@ -279,7 +334,8 @@ static LONG isp_output_configure(struct vc_session *session)
 		return error;
 
 	struct mmal_port *port = session->isp_out;
-	video_format_set(&port->format, format_encoding(shape->format), geometry->width, geometry->height, &shape->dest,
+	struct VCRect picture = rect_whole((u32)shape->dest.Width, (u32)shape->dest.Height); /* at the view's start */
+	video_format_set(&port->format, format_encoding(shape->format), geometry->width, geometry->height, &picture,
 	                 &session->stream.FrameRate);
 	(void)mmal_port_param_set_u32(base, port, MMAL_PARAMETER_NO_IMAGE_PADDING, 1);
 	port->buffer_num = session->output_set.count;

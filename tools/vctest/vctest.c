@@ -22,7 +22,7 @@
  *          [FRAMED] [FPS n] [OUTFORMAT f] [FLUSH n] [BACKEND name] [EXTRADATA] [PAD n] [NOPTS] [NORATE] [PACKET n]
  *          [HASHES] [CONFIG file] [TAG fourcc] [KEEP] [RESIGNAL n] [IMPORT n] [IMPORTFRAMES n] [WIDTH n] [HEIGHT n]
  *                                      an elementary stream through a decoder session
- *   IMAGE file OUT pic [OUTWIDTH n] [OUTHEIGHT n] [OUTFORMAT f] [ENCODING c] [BACKEND name] [MISALIGN] [TIMEOUT ms]
+ *   IMAGE file OUT pic [OUTWIDTH n] [OUTHEIGHT n] [OUTFORMAT f] [ENCODING c] [BACKEND name] [MISALIGN] [TIMEOUT ms] [PLACE x,y,w,h]
  *                                      one still through VC_DecodeImage()
  *   TOJPEG raw WIDTH n HEIGHT n OUT jpg [FORMAT f] [QUALITY n] [BACKEND name] [MISALIGN]
  *                                      one raw picture through VC_EncodeImage()

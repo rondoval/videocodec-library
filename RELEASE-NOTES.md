@@ -21,6 +21,12 @@
   session overrules what the stream says; on a converter session it says what
   the YUV input holds, which without it is read as full-range BT.601, as
   before. `VC_ConvertImage()` is unchanged.
+- **For programmers: back to the library's own frames.** A decoder or
+  converter session whose output frames were imported (a screen's bitmap)
+  can go back to frames of the library's own: give `VCA_OutputCount` with the
+  `VC_SetAttrsTags()` that changes the output geometry. Without it the session
+  waits for new imports, as before. A player uses this to move its picture
+  from a full screen back into a window.
 - **For programmers: no constant bit rate.** `VCA_RateControl` with `VCRC_CBR`
   is refused when the encoder session opens, with `VCERR_UNSUPPORTED`. The
   VideoCore's encoder never took it: such a session failed at its first

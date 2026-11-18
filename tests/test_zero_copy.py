@@ -2,8 +2,8 @@
 """Zero copy: pictures imported into the VPU (SMEM) instead of copied, read in the codec's debug log."""
 import pytest
 
-from harness.pictures import psnr
-from harness.tools import (ZC_TROUBLE, assert_nothing_left, codec_memory, status, still_decode, still_reference, still_rgb,
+from vchiqtest.pictures import psnr
+from vchiqtest.tools import (ZC_TROUBLE, assert_nothing_left, codec_memory, status, still_decode, still_reference, still_rgb,
                            still_time, vctest)
 
 
@@ -50,9 +50,9 @@ def test_misaligned_goes_through_own_frame(device, material, driver_log, module_
     h, w = ref.shape[:2]
     rgb, _ = still_rgb("RGB24", raw, w, h)
     which = "misaligned" if misalign else "aligned"
-    baselines.check(f"zero_copy_{which}.psnr_db", round(psnr(rgb, ref), 1), higher=True, tolerance=2.0)
+    baselines.check_near(f"zero_copy_{which}.psnr_db", round(psnr(rgb, ref), 1), higher=True, tolerance=2.0)
     us = min(us, still_time(device, material, "j1080.jpg", "RGB24", misalign=misalign, times=2))
-    baselines.check(f"zero_copy_{which}.image.us", us, higher=False, tolerance="25%")
+    baselines.check_near(f"zero_copy_{which}.image.us", us, higher=False, tolerance="25%")
     log = driver_log.since(mark)
     log.expect(r"ril\.isp port 1: zero copy on", "the ISP's input")
     log.expect(r"ril\.isp port 2: zero copy on", "the ISP's output")

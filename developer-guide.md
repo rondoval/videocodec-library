@@ -83,9 +83,18 @@ the H.265 decoder's columns (`NV12_COL128`). The rest of the `VCF_*` list
 10-bit columns, `YV12` in) is there for codec drivers to come; this one
 refuses them. NV12 and NV21 go as a camera sends them, the chroma rows right
 after the picture's own, in and out; I420, YV12 and I422 keep whole 16 rows.
-`VC_ConvertImage()` takes the same. The VideoCore reads YUV as full-range BT.601 whatever it is told, so a
-camera's video-range picture (16 to 235) comes out with its blacks at 16 and its
-whites at 235: a little flat, nothing lost.
+`VC_ConvertImage()` takes the same.
+
+**Colours.** RGB is made from what the pictures hold. A decoder knows it from
+the stream (`VCStreamInfo.ColorSpace`, a `VCCS_*`): the matrix and range an
+H.264 or H.265 stream names, and for one that names none the usual guess,
+BT.709 from 720 rows up and BT.601 below, in limited range; a JPEG is
+full-range BT.601. `VCA_ColorSpace` on a decoder session overrules the stream,
+for a container that knows better. A converter session is told with the same
+tag what its YUV input holds; told nothing, and in `VC_ConvertImage()` always,
+YUV is read as full-range BT.601, so a camera's video-range picture (16 to
+235) then comes out with its blacks at 16 and its whites at 235. YUV out of a
+decoder or converter keeps the samples as they are, whatever the tag.
 
 * **Objects.** Each side is a fixed set of `struct VCPacket` or `struct VCFrame`
   objects: the library's own (sized by `VCA_InputCount`/`InputSize`/
@@ -505,22 +514,25 @@ command's source say what the arguments do.
 | `ABANDON` | leaves the session as a crash in mid-flight would, for the repair test; needs the test hooks (8.2) | `abandon.*` |
 | `AUDIO` | silence or a tone through the firmware's audio service, driven directly; `DEST` 1 the jack, 2 HDMI0, 3 HDMI1 | `run.N.*`, `stop.N.*`, `pins.*` |
 | `AHIWALK`, `AHITONE` | a channel walk or a tone through an AHI mode | `ahi.*` |
-| `DECODE` | a decoder session over an Annex-B file, each frame's MD5 compared with ffmpeg's `framemd5` | `decode.*`, `stream.N.*`, `ref.*`, `mismatch.N.*`, `flush.*`, `keep.*`, `resignal.*` |
-| `IMAGE` | a still picture through `VC_DecodeImage()` | `header.*`, `image.*` |
-| `TOJPEG`, `CONVERT` | the other image calls | `encode_image.*`, `convert.*` |
-| `ENCODE` | an H.264 encoder session over a raw file, I420 or any `FORMAT`, `OUTWIDTH` and `OUTHEIGHT` through the ISP; `PACE`, `PACKET`, `GAPS`, `ENDEMPTY`, `HOLD` for the tests | `encode.*`, `packet.N.*` |
+| `DECODE` | a decoder session over an Annex-B file, each frame's MD5 compared with ffmpeg's `framemd5`; `IMPORT n` and `IMPORTFRAMES n` (with `WIDTH`, `HEIGHT`) give it the rig's own memory as packets and frames | `decode.*`, `stream.N.*`, `ref.*`, `mismatch.N.*`, `flush.*`, `keep.*`, `resignal.*`, `open.backend.N.*` (each backend while the session is open) |
+| `IMAGE` | a still picture through `VC_DecodeImage()`; `TIMEOUT ms` its `VCA_Timeout` | `header.*`, `image.*` |
+| `TOJPEG`, `CONVERT` | the other image calls; `SOURCE x,y,w,h` the part `CONVERT` reads (`VCA_SourceRect`) | `encode_image.*`, `convert.*` |
+| `ENCODE` | an H.264 encoder session over a raw file, I420 or any `FORMAT`, `OUTWIDTH` and `OUTHEIGHT` through the ISP; `PROFILE`, `LEVEL`, `RATE` (`VBR`, `CBR`) and `COLORSPACE` the session's; `PACE`, `PACKET`, `GAPS`, `ENDEMPTY`, `HOLD` for the tests | `encode.*`, `packet.N.*` |
 | `DATATYPE` | a picture through datatypes.library, as a program loads one | `datatype.*` |
 | `PAGE` | many pictures at once, a process each (64 at most), as a browser loads a page | `picture.N.*`, `page.*` |
 | `HOLD` | the free RAM the VPU reaches taken, all but `LEAVE` MiB at the end of the largest chunk, until Ctrl-C | `hold.*` |
+| `DEVICE` | vchiq.device's own commands on a GCMD service: `NSCMD_DEVICEQUERY`'s list, and `CMD_FLUSH` giving back the posted reads | `devicequery.*`, `flush.*` |
+| `PROBE name` | a codec backend's entry points called directly, past the library, with what no program may hand them: each must be refused | `probe.*` |
 | `SCREEN` | a Picasso96 screen to record: the colour bars and a moving block, or `NOISE`; `BACK n` steps it behind the others after n seconds, for three; `NATIVE` or `DEPTH 8` a screen VCGrab must refuse | `screen.*` |
 
 `DECODE`'s `OUT` writes the frames raw, the input of `TOJPEG`, `CONVERT` and
-`ENCODE`; `TAG fourcc` opens the session with it as `VCA_CodecTag`; `PACKET n` sets the size of an input packet, and from 512 KiB on the
+`ENCODE`; `TAG fourcc` opens the session with it as `VCA_CodecTag`; `COLORSPACE name` (`BT601`, `BT709`, `JPEG`, `BT709FULL`) gives
+`DECODE`'s session and `CONVERT`'s (with `COUNT`) a `VCA_ColorSpace`; `PACKET n` sets the size of an input packet, and from 512 KiB on the
 backend imports them (`SMEM`). `MISALIGN` puts the image calls' pictures 4
 bytes past a cache line, so the VPU cannot write them. `BACKEND name` runs any
 of the codec commands on that backend.
 
-**Output.** The grammar of `tools/common/kv.h`: `format=1` first, then one fact
+**Output.** The grammar of emu68-common's `<emu68test/kv.h>`: `format=1` first, then one fact
 per line as `key=value` (indexed groups by number: `stream.0.width`), prose for
 people indented two spaces, and `PASS` or `FAIL` last. Every run writes
 `[VCTest] begin ...` and `[VCTest] end rc=N` to the debug log, by which the
@@ -656,25 +668,27 @@ print facts and the host judges them (6.3).
 * the machine's serial adapter on `/dev/ttyUSB0` for the tests that read the
   debug log.
 
-Once, the venv (Pillow is not on the host; the suite installs nothing):
+The suite builds on emu68-common's test harness (`emu68test`), which the stack
+build installs to `install/share/emu68-testing/`; `tests/run.sh` finds it there
+and makes `tests/.venv` on its first run from the harness's requirements and
+`tests/requirements.txt` (the suite installs nothing on the host otherwise).
 
 ```sh
-python3 -m venv tests/.venv && tests/.venv/bin/pip install -r tests/requirements.txt
-tests/.venv/bin/python tests/harness/material.py      # the material ahead of time (optional, ten minutes)
+tests/run.sh material                    # the material ahead of time (optional, ten minutes)
 ```
 
 A run, from the component root:
 
 ```sh
-tests/.venv/bin/pytest tests -m smoke                   # one of every binary and path, about six minutes
-tests/.venv/bin/pytest tests                            # everything automatic, about 25 minutes
-tests/.venv/bin/pytest tests -m "not slow"              # without the level probes and the whole still set
-tests/.venv/bin/pytest tests/test_images.py -k jpeg     # pytest's own selection
-tests/.venv/bin/pytest tests --collect-only -q          # the list of tests
-tests/.venv/bin/pytest tests/unit                       # the host-only tests of the harness itself
+tests/run.sh -m smoke                   # one of every binary and path, about six minutes
+tests/run.sh                            # everything automatic, about 25 minutes
+tests/run.sh -m "not slow"              # without the level probes and the whole still set
+tests/run.sh test_images.py -k jpeg     # pytest's own selection
+tests/run.sh --collect-only -q          # the list of tests
+tests/run.sh host                       # no Amiga: the suite's own modules, the code gates, traceability
 ```
 
-The options, beside pytest's own (`tests/conftest.py`):
+The options, beside pytest's own (emu68test's plugin and `tests/vchiqtest/plugin.py`):
 
 | Option | Does |
 |---|---|
@@ -683,6 +697,7 @@ The options, beside pytest's own (`tests/conftest.py`):
 | `--install-dir`, `--build-dir` | the stack's; the build dir's `CMakeCache.txt` says the flavour |
 | `--run-dir` | where the run goes (default `tests/runs/<timestamp>`) |
 | `--no-install` | check the installed files against the install tree instead of replacing them |
+| (the install) | the machine's own files are copied to `tests/.machine/<server>/` before the first replacement, and never overwritten there |
 | `--no-reboot` | deselect the tests that reboot |
 | `--listen`, `--hands`, `--profile` | select those tiers (8.2) |
 | `--serial /dev/ttyUSB0\|none` | the debug log's port |
@@ -736,14 +751,15 @@ the install reboot must log `[vchiq] up:` on a debug build, or the run stops.
 | Module | What |
 |---|---|
 | `test_vcinfo.py` | VCInfo as a product: the summary, DUMP, GCMD, COMPONENTS, CODECS |
-| `test_device.py` | the connection up, the codec table with what a chain adds, a bulk transfer to the audio service, resume after an expunge |
-| `test_decoder.py` | bit-exact decodes, the backend named or refused, the decoder's rate, two at once, a JPEG through the video decoder, flush and replay, a chain behind the decoder, the shape change, the pixel aspect |
+| `test_device.py` | the connection up, the codec table with what a chain adds, a bulk transfer to the audio service, resume after an expunge; the device's own NSCMD_DEVICEQUERY and CMD_FLUSH; videocore.codec's refusals, called directly |
+| `test_decoder.py` | bit-exact decodes, the backend named or refused, the decoder's rate, two at once, a JPEG through the video decoder, flush and replay, a chain behind the decoder, the shape change, the pixel aspect; packets and frames of the program's own memory |
 | `test_players.py` | VPUPlay full screen and in a window, the colour bars, LOOP, two players, an empty stream, the shape change and pixel aspect on screen; VCPlay |
-| `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses |
+| `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses; an image call's timeout, part of a picture converted |
 | `test_formats.py` | every further pixel format the converter offers, in and out, against ffmpeg's conversion; the ones it does not, refused |
+| `test_colour.py` | the colour bars as BT.709 and BT.601, limited and full range, and in streams that name no colours, decoded to RGB: the bars' own colours and the colour space reported; `VCA_ColorSpace` overruling a stream; a converter session told its input's colours, and told nothing |
 | `test_choice.py` (reboot) | the backend chosen by the pictures asked for: `tests/swconv/`, a software converter built only for the suite, put in `LIBS:videocodec/` for the module |
-| `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise |
-| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs |
+| `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise; the profile, level, rate control and colour space asked for |
+| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs; the saved settings, every key of them |
 | `test_levels.py` | the H.264 limit probes: declared levels, reference frames, rates, sizes, profiles; MJPEG sizes against ffmpeg |
 | `test_audio.py` | the audio service directly: rates, chunk and depth, STOP, two streams, outputs, channel counts; by ear the tone, the volume step, the channel walk |
 | `test_ahi.py` | videocore.audio through AHI: the three modes, the driver's log lines, two streams, a break, the services closed; by ear the 7.1 order |
@@ -786,7 +802,7 @@ times), nothing else. What a number means is said where it is checked, in the
 test, with an absolute tolerance or a percentage of the baseline:
 
 ```python
-baselines.check("fullscreen.play.fps", fps, higher=True, tolerance="10%")
+baselines.check_near("fullscreen.play.fps", fps, higher=True, tolerance="10%")
 ```
 
 A value with no baseline for this machine is recorded with a warning.
@@ -807,12 +823,12 @@ output, so the rates stay near a release build's.
 ```sh
 EMU68_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=off -DEMU68_TRACE= -DEMU68_DEBUG= -DEMU68_PROFILE=emu68-vchiq-library" \
     ./scripts/docker-build.sh --target emu68-vchiq-library
-tests/.venv/bin/pytest tests --profile -m profile --update-baselines
+tests/run.sh --profile -m profile --update-baselines
 ```
 
 Each instance reports every 2 s while it works, and once more when a session
 (`[videocore]`) or a unit (`[vchiq]`) closes, as `[prefix] slot: n=.. sum=..us
-avg=..us max=..us`. `tests/harness/perf.py` reads them; emu68-common's
+avg=..us max=..us`. emu68test's `perf.py` reads them; emu68-common's
 `scripts/perf-report.py` reduces a capture by hand.
 
 | Slot | What it times |
@@ -845,7 +861,7 @@ A test is a function in the module of its area. It asks for what it needs:
 |---|---|
 | `device` | the Amiga: `run()` for a rig that speaks the grammar, `run_text()` for VCInfo and the examples, `start()` for a background job, `download()`, `screenshot()`, `window()` |
 | `material` | `.ram(name)` uploads a file once per boot and returns its `RAM:hw` path; `.path(name)` makes it on the host |
-| `baselines` | `check()` (8.5) |
+| `baselines` | `check_near()` (8.5) |
 | `driver_log`, `debuglog` | a slice of the log: `since(mark)`, `.expect()`, `.forbid()`, `.find()` |
 | `artifacts` | the test's directory |
 | `record_property` | a note for the report |
@@ -857,18 +873,18 @@ The rules:
 * temporary files in `RAM:hw` only, deleted by the test; `test_nothing_left`
   catches what is left behind;
 * facts read from the rigs' `key=value` lines, never from prose;
-* measured numbers through `baselines.check()`, verdicts as plain asserts in
+* measured numbers through `baselines.check_near()`, verdicts as plain asserts in
   plain words.
 
-The host-only tests in `tests/unit/` cover the parser, the picture maths, the
-baselines and the material recipes.
+The host-only tests in `tests/unit/` cover the picture maths and the material
+recipes; the parser's and the baselines' are emu68-common's (`tests/` there).
 
 ### 8.8 Test material
 
 Nothing binary is checked in. Everything comes from one sample, convertico's
 `sample-mp4-1080p-h264-10s.mp4` (convertico.com/samples/mp4: free for testing,
 no attribution required; 1920x1080 High, 30 fps, 300 frames with B-frames,
-x264). `tests/harness/material.py` downloads it once into `tests/.cache/source/`
+x264). `tests/vchiqtest/material.py` downloads it once into `tests/.cache/source/`
 and checks its SHA-256 on every use: a changed file is an error, since the clip
 and every baseline come from it. Offline, put the file there by hand.
 
@@ -886,17 +902,17 @@ elementary stream, never from the MP4 (edit lists can drop leading frames).
 JPEG decoding is not bit-exact between decoders, so pictures are compared by
 PSNR.
 
-The rest is made on the host from `clip42` by `tests/harness/material.py`
+The rest is made on the host from `clip42` by `tests/vchiqtest/material.py`
 (ffmpeg, x264, Pillow) into `tests/.cache/material-v<version>/` the first time
 a test needs it, and kept: the converter and encoder inputs, the JPEGs, the
 shape-change and pixel-aspect streams, the H.264 limit probes, the still
 pictures of every format with Pillow's decode of each as the reference
-(`tests/harness/stills.py`), and the colour-bar pattern the screenshot tests
+(`tests/vchiqtest/stills.py`), and the colour-bar pattern the screenshot tests
 judge. The VPU's H.264 output keeps the limited range, 16 to 235, so a bar
 passes at either rendering. Two inputs the Amiga makes itself, once per boot:
 one frame and thirty frames of clip42 decoded to raw I420.
 
 The ffmpeg command lines are the test material: a changed recipe gets a new
 `MATERIAL_VERSION`, so the old cache is left alone.
-`tests/.venv/bin/python tests/harness/material.py` makes everything ahead of a
+`tests/run.sh material` makes everything ahead of a
 run (about ten minutes, mostly x264); `--only l-` makes what matches.

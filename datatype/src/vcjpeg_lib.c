@@ -18,6 +18,12 @@
 #endif
 
 LONG __attribute__((used, section(".text.entry"))) doNotExecute(void);
+/**
+ * doNotExecute() - The file's first code: run as a program, it returns at once.
+ *
+ *
+ * Return: -1.
+ */
 LONG __attribute__((used, section(".text.entry"))) doNotExecute(void)
 {
 	return -1;
@@ -72,6 +78,13 @@ static void lib_free(struct VCJpegBase *base)
 	FreeMem((APTR)((ULONG)base - base->lib.lib_NegSize), (ULONG)base->lib.lib_NegSize + base->lib.lib_PosSize);
 }
 
+/**
+ * LibExpunge() - Library expunge entry: free the library when nothing holds it, else flag it for deletion.
+ *
+ * @base: the library base (register a6)
+ *
+ * Return: the segment list for the loader to unload, 0 when the expunge is deferred.
+ */
 static ULONG LibExpunge(struct VCJpegBase *base asm("a6"))
 {
 	struct ExecBase *SysBase = base->SysBase;
@@ -93,6 +106,15 @@ static ULONG LibExpunge(struct VCJpegBase *base asm("a6"))
 	return segList;
 }
 
+/**
+ * LibInit() - Library init entry (RTF_AUTOINIT): set the base up and open what the library uses.
+ *
+ * @lib: the library base the loader built (register d0)
+ * @seglist: the library's segment list (register a0)
+ * @SysBase: exec.library's base (register a6)
+ *
+ * Return: the library base, NULL when something could not be opened (the base is freed).
+ */
 static struct Library *LibInit(struct Library *lib asm("d0"), ULONG seglist asm("a0"), struct ExecBase *SysBase asm("a6"))
 {
 	struct VCJpegBase *base = (struct VCJpegBase *)lib;
@@ -119,6 +141,14 @@ static struct Library *LibInit(struct Library *lib asm("d0"), ULONG seglist asm(
 	return lib;
 }
 
+/**
+ * LibOpen() - Library open entry: count the opener and cancel a pending expunge.
+ *
+ * @version: the version asked for (register d0), not checked
+ * @base: the library base (register a6)
+ *
+ * Return: the library base.
+ */
 static struct VCJpegBase *LibOpen(ULONG version asm("d0"), struct VCJpegBase *base asm("a6"))
 {
 	(void)version;
@@ -127,6 +157,13 @@ static struct VCJpegBase *LibOpen(ULONG version asm("d0"), struct VCJpegBase *ba
 	return base;
 }
 
+/**
+ * LibClose() - Library close entry: drop an opener, expunge when it was the last and an expunge is pending.
+ *
+ * @base: the library base (register a6)
+ *
+ * Return: the segment list when the library was expunged, else 0.
+ */
 static ULONG LibClose(struct VCJpegBase *base asm("a6"))
 {
 	base->lib.lib_OpenCnt--;
@@ -135,6 +172,12 @@ static ULONG LibClose(struct VCJpegBase *base asm("a6"))
 	return 0;
 }
 
+/**
+ * LibNull() - The reserved library slot, which AmigaOS never calls: 'do not execute'.
+ *
+ *
+ * Return: 0.
+ */
 static ULONG LibNull(void)
 {
 	return 0;

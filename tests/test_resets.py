@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from harness.results import expect
-from harness.tools import codec_memory, status, vctest
+from emu68test.results import expect
+from vchiqtest.tools import codec_memory, status, vctest
 from test_ahi import MODE_16BIT
 
 PRESS_WAIT_S = 1800  # someone has to come to the machine: longer than a test's limit, so these have their own
@@ -13,6 +13,8 @@ PRESS_WAIT_S = 1800  # someone has to come to the machine: longer than a test's 
 
 def test_missing_drawer(device):
     """No LIBS:videocodec drawer: no codecs, no hang; the drawer back, the codecs back."""
+    before = vctest(device, "CODECS", 30)
+    assert before.passed and before.num("codecs") > 0, before.kv.get("fail")
     device.flush()
     device.exec("Rename LIBS:videocodec AS LIBS:videocodec-tests", timeout=15)
     try:
@@ -22,7 +24,8 @@ def test_missing_drawer(device):
     assert not gone.passed and gone.num("codecs") == 0, f"{gone.kv.get('codecs')} codecs without the drawer"
     device.flush()  # the scan is cached until the library goes
     back = vctest(device, "CODECS", 30)
-    assert back.passed and back.num("codecs") == 11, f"{back.kv.get('codecs')} codecs with the drawer back"
+    assert back.passed and back.num("codecs") == before.num("codecs"), \
+        f"{back.kv.get('codecs')} codecs with the drawer back, {before.kv.get('codecs')} before"
 
 
 @pytest.mark.reboot
@@ -99,6 +102,7 @@ def test_reboot_during_sound(device, driver_log, record_property):
 
 @pytest.mark.reboot
 @pytest.mark.hooks
+@pytest.mark.covers("NSCMD_VQ_TEST_ABANDON")
 def test_abandon_then_repair(device, driver_log):
     """A session left as a crash would (ABANDON, then C:Reboot): the first open after the reset repairs it, and the
     repaired connection carries a service with bulk transfers (the audio service); a reboot leaves it resumed."""

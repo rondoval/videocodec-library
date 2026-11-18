@@ -14,7 +14,7 @@
 #include <exec/memory.h>
 
 #include <bits.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 
 #include "picture.h"
 
@@ -128,6 +128,13 @@ ULONG raw_bytes(ULONG f, ULONG w, ULONG h)
 	return w * h * fmt_bpp(f);
 }
 
+/**
+ * align32() - Round up to a multiple of 32.
+ *
+ * @v: the value
+ *
+ * Return: the rounded value.
+ */
 static ULONG align32(ULONG v)
 {
 	return (v + 31u) & ~31u;
@@ -235,7 +242,7 @@ BOOL raw_into_frame(BPTR file, UBYTE *tmp, struct VCFrame *f, ULONG w, ULONG h)
 		ULONG size = f->Pitch[0] * (f->Width / column_pixels(fmt));
 		LONG n = Read(file, f->Data, (LONG)size);
 		if (n > 0 && (ULONG)n != size)
-			note("a short picture at the end of the file (%ld of %lu bytes): dropped\n", n, size);
+			kv_note("a short picture at the end of the file (%ld of %lu bytes): dropped", n, size);
 		return n > 0 && (ULONG)n == size;
 	}
 	ULONG bytes = raw_bytes(fmt, w, h);
@@ -244,7 +251,7 @@ BOOL raw_into_frame(BPTR file, UBYTE *tmp, struct VCFrame *f, ULONG w, ULONG h)
 		return FALSE;
 	if ((ULONG)n != bytes)
 	{
-		note("a short picture at the end of the file (%ld of %lu bytes): dropped\n", n, bytes);
+		kv_note("a short picture at the end of the file (%ld of %lu bytes): dropped", n, bytes);
 		return FALSE;
 	}
 	UBYTE *d = f->Data;
@@ -351,7 +358,7 @@ BOOL frame_to_file(const char *name, const struct VCFrame *f)
 	}
 	Close(out);
 	if (!ok)
-		note("writing %s failed\n", name);
+		kv_note("writing %s failed", name);
 	return ok;
 }
 
@@ -375,7 +382,7 @@ UBYTE *load_file(const char *name, ULONG *len)
 	UBYTE *data = size > 0 ? AllocVec((ULONG)size, MEMF_PUBLIC) : NULL;
 	if (data == NULL || Read(f, data, size) != size)
 	{
-		note("cannot read %s (%ld bytes)\n", name, size);
+		kv_note("cannot read %s (%ld bytes)", name, size);
 		if (data != NULL)
 			FreeVec(data);
 		data = NULL;

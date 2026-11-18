@@ -666,7 +666,7 @@ struct VCFrame *session_import_frame(struct vc_session *session, ULONG side, APT
 	}
 
 	const struct vc_shape *shape = &session->shape;
-	if (!shape->resolved)
+	if (!shape->resolved || data == NULL || !view_fits(session, data, shape->geometry.size, shape->view.size))
 		return NULL;
 
 	struct vc_object *object = object_import(session, side, TRUE, data, shape->geometry.size);
@@ -674,6 +674,7 @@ struct VCFrame *session_import_frame(struct vc_session *session, ULONG side, APT
 		return NULL;
 
 	frame_set_geometry(object, &shape->geometry, shape->format, &shape->dest);
+	view_place(object, shape);
 	return &object->pub.frame;
 }
 

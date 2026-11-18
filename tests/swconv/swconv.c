@@ -48,6 +48,12 @@ struct SwconvBase
 };
 
 LONG __attribute__((used, section(".text.entry"))) doNotExecute(void);
+/**
+ * doNotExecute() - The file's first code: run as a program, it returns at once.
+ *
+ *
+ * Return: -1.
+ */
 LONG __attribute__((used, section(".text.entry"))) doNotExecute(void)
 {
 	return -1;

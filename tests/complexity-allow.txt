@@ -1,0 +1,53 @@
+# The complexity gate's allow list (tests/gates/test_gates.py, emu68test/gates.py):
+#
+#   <file>:<function> <ceiling> <reason>
+#
+# A function not listed may have a cyclomatic complexity of 15 at most. A listed one may have its
+# ceiling: 20 at most with a reason, or what the 0.6 code had when the gate came ("0.6:"). A ceiling
+# stays at what the function needs: the gate fails on one that is higher, so this list only goes down.
+datatype/src/vcjpeg_class.c:software_decode 17 0.6: as the code was when the gate came
+shared/image_info.c:gif_info 21 0.6: as the code was when the gate came
+shared/image_info.c:image_codec 18 0.6: as the code was when the gate came
+shared/image_info.c:jpeg_info 19 0.6: as the code was when the gate came
+shared/image_info.c:png_info 16 0.6: as the code was when the gate came
+shared/image_info.c:ppm_number 17 0.6: as the code was when the gate came
+shared/image_info.c:tga_info 25 0.6: as the code was when the gate came
+tests/swconv/swconv.c:image_supported 16 0.6: as the code was when the gate came
+tools/VCInfo.c:main 17 0.6: as the code was when the gate came
+tools/VCInfo.c:summary_firmware 26 0.6: as the code was when the gate came
+tools/VCPlay.c:main 20 0.6: as the code was when the gate came
+tools/VCShow.c:show 16 0.6: as the code was when the gate came
+tools/VPUPlay.c:display_setup 17 0.6: as the code was when the gate came
+tools/VPUPlay.c:main 19 0.6: as the code was when the gate came
+tools/VPUPlay.c:play 58 0.6: as the code was when the gate came
+tools/VPUPlay.c:screen_setup 20 0.6: as the code was when the gate came
+tools/common/vc_names.c:codec_name 24 0.6: as the code was when the gate came
+tools/vctest/audio.c:do_audio 22 0.6: as the code was when the gate came
+tools/vctest/decode.c:codec_of 41 0.6: as the code was when the gate came
+tools/vctest/decode.c:decode_loop 23 0.6: as the code was when the gate came
+tools/vctest/decode.c:decode_summary 23 0.6: as the code was when the gate came
+tools/vctest/decode.c:do_decode 49 0.6: as the code was when the gate came
+tools/vctest/decode.c:fill_packet 20 0.6: as the code was when the gate came
+tools/vctest/decode.c:handle_frame 43 0.6: as the code was when the gate came
+tools/vctest/decode.c:load_ref 21 0.6: as the code was when the gate came
+tools/vctest/decode.c:nal_kind 17 0.6: as the code was when the gate came
+tools/vctest/decode.c:next_nal 16 0.6: as the code was when the gate came
+tools/vctest/encode.c:do_encode 22 0.6: as the code was when the gate came
+tools/vctest/encode.c:encode_loop 20 0.6: as the code was when the gate came
+tools/vctest/image.c:do_convert 17 0.6: as the code was when the gate came
+tools/vctest/image.c:do_tojpeg 16 0.6: as the code was when the gate came
+tools/vctest/picture.c:fmt_bpp 17 0.6: as the code was when the gate came
+tools/vctest/picture.c:frame_to_file 16 0.6: as the code was when the gate came
+tools/vctest/screen.c:do_screen 18 0.6: as the code was when the gate came
+tools/vctest/vctest.c:main 16 0.6: as the code was when the gate came
+vchiq/src/device_beginio.c:beginIO 23 0.6: as the code was when the gate came
+vchiq/src/unit_task.c:UnitTask 16 0.6: as the code was when the gate came
+vchiq/src/vchiq_link.c:vchiq_link_up 21 0.6: as the code was when the gate came
+videocodec/src/videocodec_image.c:image_tag 19 0.6: as the code was when the gate came
+videocodec/src/videocodec_session.c:session_tag 32 0.6: as the code was when the gate came
+videocore/src/h264_sps.c:h264_sps_read 33 0.6: as the code was when the gate came
+videocore/src/session_formats.c:format_bytes_per_pixel 25 0.6: as the code was when the gate came
+videocore/src/session_formats.c:format_encoding 21 0.6: as the code was when the gate came
+videocore/src/session_formats.c:picture_geometry 22 0.6: as the code was when the gate came
+videocore/src/session_isp.c:shape_resolve 16 0.6: as the code was when the gate came
+videocore/src/session_still.c:still_fits 22 0.6: as the code was when the gate came

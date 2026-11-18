@@ -20,22 +20,26 @@
  *                                      the tone through an AHI mode, start and stop timed
  *   DECODE file [REF framemd5] [OUT file] [FRAMES n] [NOHASH] [ENCODING H264|MJPEG] [VERBOSE]
  *          [FRAMED] [FPS n] [OUTFORMAT f] [FLUSH n] [BACKEND name] [EXTRADATA] [PAD n] [NOPTS] [NORATE] [PACKET n]
- *          [HASHES] [CONFIG file] [TAG fourcc] [KEEP] [RESIGNAL n]
+ *          [HASHES] [CONFIG file] [TAG fourcc] [KEEP] [RESIGNAL n] [IMPORT n] [IMPORTFRAMES n] [WIDTH n] [HEIGHT n]
  *                                      an elementary stream through a decoder session
- *   IMAGE file OUT pic [OUTWIDTH n] [OUTHEIGHT n] [OUTFORMAT f] [ENCODING c] [BACKEND name] [MISALIGN]
+ *   IMAGE file OUT pic [OUTWIDTH n] [OUTHEIGHT n] [OUTFORMAT f] [ENCODING c] [BACKEND name] [MISALIGN] [TIMEOUT ms] [PLACE x,y,w,h]
  *                                      one still through VC_DecodeImage()
  *   TOJPEG raw WIDTH n HEIGHT n OUT jpg [FORMAT f] [QUALITY n] [BACKEND name] [MISALIGN]
  *                                      one raw picture through VC_EncodeImage()
  *   CONVERT raw WIDTH n HEIGHT n OUT pic [FORMAT f] [OUTWIDTH n] [OUTHEIGHT n] [OUTFORMAT f]
- *           [BACKEND name] [MISALIGN] [COUNT n]
+ *           [BACKEND name] [MISALIGN] [COUNT n] [SOURCE x,y,w,h]
  *                                      one raw picture through VC_ConvertImage(), or
  *                                      COUNT times through a converter session, timed
  *   ENCODE raw WIDTH n HEIGHT n OUT h264 [FPS n] [BITRATE n] [KEYINT n] [KEYREQ n] [FORMAT f] [OUTWIDTH n] [OUTHEIGHT n] [HOLD n] [GAPS] [ENDEMPTY] [BACKEND name]
+ *          [PACE] [PACKET n] [PROFILE p] [LEVEL n] [RATE VBR|CBR] [COLORSPACE c]
  *                                      a raw file through an H.264 encoder session
  *   DATATYPE file [OUT pic]            a picture through datatypes.library
  *   PAGE file... [COPIES n]            many at once, a process each, as a browser loads a page
  *   SCREEN WIDTH n HEIGHT n [DEPTH n] [SECONDS n] [NOISE] [BACK n]
  *                                      a Picasso96 screen to record: colour bars, a block moving, or noise
+ *   HOLD LEAVE n                       all the free RAM the VPU reaches taken but n MiB, until Ctrl-C
+ *   DEVICE                             vchiq.device's own commands: NSCMD_DEVICEQUERY, CMD_FLUSH
+ *   PROBE name                         a codec backend's refusals, its entry points called directly
  *
  * Return codes: 0 the command did its work and its checks passed (PASS),
  * 5 a check failed, 10 the environment (a library, device, file or memory
@@ -60,7 +64,7 @@
 #include <string.h>
 
 #include <debugport.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <strutil.h>
 
 #include "commands.h"
@@ -93,6 +97,8 @@ static const struct command commands[] = {
     {"DATATYPE", datatype_template, do_datatype, FALSE}, {"PAGE", page_template, do_page, TRUE},
     {"SCREEN", screen_template, do_screen, FALSE},
     {"HOLD", hold_template, do_hold, FALSE},
+    {"DEVICE", device_template, do_device, FALSE},
+    {"PROBE", probe_template, do_probe, FALSE},
 };
 
 /**
@@ -168,6 +174,14 @@ static struct RDArgs *parse_rest(const char *template, const char *rest, LONG *a
 	return rda;
 }
 
+/**
+ * main() - Entry point: look up the command, parse its arguments and run it with a kv grammar around it.
+ *
+ * VCTest ? lists the commands, VCTest COMMAND ? one command's template.  videocodec.library is opened for every
+ * command; one that needs it fails without.
+ *
+ * Return: the command's return code via kv_end(), RETURN_OK for the help, RETURN_FAIL for a bad command or arguments.
+ */
 int main(void)
 {
 	LONG top[2] = {0, 0};
@@ -212,10 +226,9 @@ int main(void)
 		}
 	}
 
-	kv_init("VCTest", FALSE);
-	kv_str("command", cmd->name);
+	kv_debug_log("VCTest", (const char *)GetArgStr(), FALSE);
+	kv_begin(cmd->name);
 	kv_num("cli", ((struct Process *)FindTask(NULL))->pr_TaskNum);
-	kv_begin((const char *)GetArgStr());
 	rc = RETURN_ERROR;
 	VideoCodecBase = OpenLibrary((CONST_STRPTR)VIDEOCODEC_NAME, 0);
 	if (VideoCodecBase != NULL)
@@ -236,8 +249,7 @@ int main(void)
 	rc = cmd->run(&t, args);
 	waiter_close(&t.waiter);
 out_run:
-	kv_verdict(rc);
-	kv_end(rc);
+	rc = kv_end(rc);
 	if (VideoCodecBase != NULL)
 		CloseLibrary(VideoCodecBase);
 	if (rda_cmd != NULL)

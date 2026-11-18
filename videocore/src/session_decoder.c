@@ -163,8 +163,32 @@ BOOL shape_set_native(struct vc_session *session, ULONG format, u32 width, u32 h
 		return FALSE;
 	shape->format = format;
 	shape->dest = *dest;
+	shape_view_whole(shape);
 	shape->resolved = TRUE;
 	return TRUE;
+}
+
+/**
+ * stream_color_space() - What a decoder's or a still's pictures hold.
+ * @session: the session
+ * @rows:    the pictures' rows
+ *
+ * The client's VCA_ColorSpace first.  An H.264 stream's own comes from its
+ * SPS (the decoder's format change gives no matrix for a full-range one),
+ * guessed from the rows where the backend saw no SPS.  A JPEG, moving or
+ * still, is full-range BT.601.
+ *
+ * Return: VCCS_*, never VCCS_Unknown.
+ */
+static ULONG stream_color_space(const struct vc_session *session, u32 rows)
+{
+	if (session->params.ColorSpace != VCCS_Unknown)
+		return session->params.ColorSpace;
+	if (session->params.Codec != VCC_H264)
+		return VCCS_JPEG;
+	if (session->sps_space != VCCS_Unknown)
+		return session->sps_space;
+	return VC_ColorSpaceOf(VC_MATRIX_UNSPECIFIED, FALSE, rows);
 }
 
 /**
@@ -209,7 +233,7 @@ LONG stream_format_take(struct vc_session *session, const struct mmal_format_cha
 	stream->Par.Den = format->es.video.par.den;
 	if (session->sps_par.Num != 0)
 		stream->Par = session->sps_par; /* the decoder says 1/1 whatever the stream says */
-	stream->ColorSpace = format->es.video.color_space;
+	stream->ColorSpace = stream_color_space(session, stream->Height);
 	stream->Format = session->tunnelled ? param_output_format(&session->params) : picture;
 	session->have_stream = TRUE;
 	Kprintf("[videocore] stream: %ldx%ld (%ldx%ld in memory), %ld/%ld fps\n", stream->Crop.Width, stream->Crop.Height, stream->Width,
@@ -585,6 +609,7 @@ static LONG decoder_open(struct vc_session *session)
 		if (!h264_profile_ok(sps.profile))
 			return VCERR_STREAM;
 		session->sps_par = sps.par;
+		session->sps_space = sps.color_space;
 		LONG heap = decoder_heap_check(session, &sps);
 		if (heap != 0)
 			return heap;
@@ -671,7 +696,10 @@ static LONG decoder_check_input(struct vc_session *session, const UBYTE *data, u
 			return VCERR_STREAM;
 		}
 		if (sps.profile != 0)
+		{
 			session->sps_par = sps.par;
+			session->sps_space = sps.color_space;
+		}
 		LONG heap = decoder_heap_check(session, &sps);
 		if (heap != 0)
 		{

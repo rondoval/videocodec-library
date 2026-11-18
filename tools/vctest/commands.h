@@ -26,7 +26,7 @@
 extern struct Library *VideoCodecBase;
 
 #define IDLE_MS 5000 /* nothing moved for this long: stuck */
-#define ARGS_MAX 24  /* the longest template's entries; parse_rest() refuses a longer one */
+#define ARGS_MAX 28  /* the longest template's entries; parse_rest() refuses a longer one */
 
 /* What every command gets */
 struct tool
@@ -35,7 +35,11 @@ struct tool
 	struct vq_service svc;
 	const char *backend; /* BACKEND: the backend every session and image call asks for, NULL for the library's choice */
 	BOOL misalign;       /* MISALIGN: pictures 4 bytes past a cache line, which the backend then sends by bulk */
+	ULONG color_space;   /* COLORSPACE: VCCS_* a decoder or converter session is told its pictures hold, VCCS_Unknown for nothing told */
 };
+
+/* VCA_ColorSpace when COLORSPACE was given, else nothing: two tag slots */
+#define COLOR_SPACE_TAG(t) ((t)->color_space != VCCS_Unknown ? VCA_ColorSpace : TAG_IGNORE), (t)->color_space
 
 /* VCA_Backend when BACKEND was given, else nothing: two tag slots */
 #define BACKEND_TAG(t) ((t)->backend != NULL ? VCA_Backend : TAG_IGNORE), (ULONG)(t)->backend
@@ -57,6 +61,8 @@ extern const char datatype_template[];
 extern const char page_template[];
 extern const char screen_template[];
 extern const char hold_template[];
+extern const char device_template[];
+extern const char probe_template[];
 
 int do_status(struct tool *t, LONG *args);
 int do_codecs(struct tool *t, LONG *args);
@@ -73,5 +79,7 @@ int do_datatype(struct tool *t, LONG *args);
 int do_page(struct tool *t, LONG *args);
 int do_screen(struct tool *t, LONG *args);
 int do_hold(struct tool *t, LONG *args);
+int do_device(struct tool *t, LONG *args);
+int do_probe(struct tool *t, LONG *args);
 
 #endif /* VCTEST_COMMANDS_H */

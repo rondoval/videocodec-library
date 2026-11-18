@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from harness.pictures import best_psnr, ref_rgb
-from harness.tools import backend, status, vctest
+from vchiqtest.pictures import best_psnr, ref_rgb
+from vchiqtest.tools import backend, status, vctest
 
 SWCONV = "LIBS:videocodec/swconv.codec"
 W, H = 800, 600

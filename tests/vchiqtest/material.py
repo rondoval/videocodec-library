@@ -13,8 +13,8 @@ when a recipe changes, so the old cache is left alone and a fresh one is made
 verbatim from the former testdata/hwcycle.py (make_material,
 make_level_material, describe).
 
-    python3 tests/harness/material.py            make everything (about 10 minutes the first time)
-    python3 tests/harness/material.py --only l-  make what matches
+    tests/run.sh material            make everything (about 10 minutes the first time)
+    tests/run.sh material --only l-  make what matches
 """
 from __future__ import annotations
 
@@ -30,9 +30,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
-MATERIAL_VERSION = "1"
-
-TESTS = Path(__file__).resolve().parents[1]
+MATERIAL_VERSION = "2"  # 2: the pattern clips are BT.709 and say so; the bars in each colour space
 
 # 1920x1080 High, 30 fps, 300 frames (x264), from convertico.com/samples/mp4: free for testing, no attribution required
 SOURCE_NAME = "sample-mp4-1080p-h264-10s.mp4"
@@ -69,9 +67,9 @@ def ffmpeg(*args: str, stdin: bytes | None = None) -> bytes:
     return sh(["ffmpeg", "-v", "error", "-y", *args], input=stdin)
 
 
-def cache_dir(root: Path | None = None) -> Path:
-    """The material cache of this MATERIAL_VERSION under @root (the tests directory by default)."""
-    return (root or TESTS) / ".cache" / f"material-v{MATERIAL_VERSION}"
+def cache_dir(tests: Path) -> Path:
+    """The material cache of this MATERIAL_VERSION under @tests, a suite's tests directory."""
+    return Path(tests) / ".cache" / f"material-v{MATERIAL_VERSION}"
 
 
 def check_source(path: Path) -> None:
@@ -368,8 +366,15 @@ def _stills(cache: Path) -> None:
 
 # -- the colour-bar pattern of the screenshot tests
 
+# The picture is RGB: its YUV is made as BT.709 in limited range, and the stream says so, as a film's does
 PATTERN_X264 = ["-c:v", "libx264", "-preset", "medium", "-tune", "stillimage", "-pix_fmt", "yuv420p", "-profile:v", "high",
-                "-level", "4.1", "-f", "h264"]
+                "-level", "4.1", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
+                "-f", "h264"]
+
+
+def pattern_filter(size: str = "") -> list[str]:
+    """The ffmpeg filter that makes the pattern's YUV, scaled to @size ("1280:720") when given."""
+    return ["-vf", f"scale={size + ':' if size else ''}out_color_matrix=bt709:out_range=tv"]
 
 
 @recipe("pattern.png")
@@ -394,17 +399,64 @@ def _pattern_input(cache: Path) -> list[str]:
 @recipe("pattern.h264", "pattern.png")
 def _pattern_h264(cache: Path) -> None:
     # 60 identical frames: whatever frame is on screen at shot time, the bars are the same
-    ffmpeg(*_pattern_input(cache), "-frames:v", "60", *PATTERN_X264, str(cache / "pattern.h264"))
+    ffmpeg(*_pattern_input(cache), "-frames:v", "60", *pattern_filter(), *PATTERN_X264, str(cache / "pattern.h264"))
 
 
 @recipe("two-pattern.h264", "pattern.png")
 def _two_pattern(cache: Path) -> None:
     # the bars at 1080p, then the same picture at 720p: the shape change, judged on screen
-    _two_parts(cache, "two-pattern", [*_pattern_input(cache), "-frames:v", "60", *PATTERN_X264],
-               [*_pattern_input(cache), "-frames:v", "60", "-vf", "scale=1280:720", *PATTERN_X264])
+    _two_parts(cache, "two-pattern", [*_pattern_input(cache), "-frames:v", "60", *pattern_filter(), *PATTERN_X264],
+               [*_pattern_input(cache), "-frames:v", "60", *pattern_filter("1280:720"), *PATTERN_X264])
 
 
 RECIPES["two-pattern.framemd5"] = RECIPES["two-pattern.h264"]
+
+
+# -- the bars in each colour space a stream can name, and in streams that name none (tests/test_colour.py)
+
+# name: (width, height, the matrix and range its YUV is made with, ffmpeg's name for the matrix in the stream; None: unspecified)
+COLOUR_BARS = {
+    "bars-709": (1280, 720, "bt709", "tv", "bt709"),
+    "bars-601": (640, 480, "bt601", "tv", "smpte170m"),
+    "bars-709full": (1280, 720, "bt709", "pc", "bt709"),
+    "bars-plain-hd": (1280, 720, "bt709", "tv", None),
+    "bars-plain-sd": (640, 480, "bt601", "tv", None),
+}
+UNSPECIFIED = "2"  # H.264's code for a colour description that says nothing (Table E-3 to E-5)
+
+
+def _colour_bars(name: str) -> None:
+    """Register <name>.h264 (five frames of the bars) and <name>.i420 (one, raw) of COLOUR_BARS[@name]."""
+    width, height, matrix, levels, tag = COLOUR_BARS[name]
+
+    def source() -> tuple[list[str], bytes]:
+        from .pictures import pattern
+        picture = pattern(width, height)[0].tobytes()
+        return (["-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", "25", "-i", "-", "-vf",
+                 f"scale=out_color_matrix={matrix}:out_range={levels},format=yuv420p"], picture)
+
+    def clip(cache: Path) -> None:
+        args, picture = source()
+        # the encoder is told the matrix the YUV was made with (ffmpeg converts to whatever it is told otherwise);
+        # for a stream that is to name none, the metadata filter then blanks the description
+        said = tag if tag is not None else {"bt709": "bt709", "bt601": "smpte170m"}[matrix]
+        says = ["-colorspace", said, "-color_primaries", said, "-color_trc", said, "-color_range", levels]
+        if tag is None:  # a video signal type that names nothing: the stream leaves its colours to the player
+            says += ["-bsf:v", f"h264_metadata=colour_primaries={UNSPECIFIED}:transfer_characteristics={UNSPECIFIED}:"
+                               f"matrix_coefficients={UNSPECIFIED}"]
+        ffmpeg(*args, "-c:v", "libx264", "-crf", "1", "-profile:v", "high", *says, "-f", "h264", str(cache / f"{name}.h264"),
+               stdin=picture * 5)
+
+    def raw(cache: Path) -> None:
+        args, picture = source()
+        ffmpeg(*args, "-f", "rawvideo", str(cache / f"{name}.i420"), stdin=picture)
+
+    RECIPES[f"{name}.h264"] = clip
+    RECIPES[f"{name}.i420"] = raw
+
+
+for _name in COLOUR_BARS:
+    _colour_bars(_name)
 
 
 class Material:
@@ -437,7 +489,8 @@ def main(argv: list[str]) -> int:
     import argparse
     parser = argparse.ArgumentParser(description="make the test material into the cache")
     parser.add_argument("--only", help="only the recipes whose name contains this")
-    parser.add_argument("--cache", type=Path, default=cache_dir(), help="the cache directory")
+    parser.add_argument("--cache", type=Path, default=cache_dir(Path.cwd()),
+                        help="the cache directory (default: under the current directory, a suite's tests/)")
     args = parser.parse_args(argv)
     start = time.time()
     made = 0
@@ -456,8 +509,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    if __package__ in (None, ""):  # run as a script: make the package importable
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from harness import material as _self  # noqa: F401
-        sys.exit(_self.main(sys.argv[1:]))
     sys.exit(main(sys.argv[1:]))

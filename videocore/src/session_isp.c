@@ -12,6 +12,32 @@
 #define OUTPUT_COUNT_DEFAULT 3 /* the backend's own output frames, when the client asks for none */
 #define TUNNEL_BUFFERS 3       /* decoded frames between the decoder and the ISP, unless the decoder needs more */
 
+#define CCM_TERMS 9                          /* the custom matrix: three rows of three */
+#define CCM_OFFSETS 3                        /* and an offset a row */
+#define CCM_DENOMINATOR 0x10000u             /* every term goes as a rational over this */
+#define CCM_WORDS (1 + 2 * CCM_TERMS + CCM_OFFSETS) /* the parameter: the enable word, the rationals, the offsets */
+
+/*
+ * The ISP's custom matrix for a colour space.  With YUV in, the ISP puts the
+ * samples through the matrix before its one conversion to RGB, full-range
+ * BT.601's: (Y', Cb', Cr') = 8 x terms x (Y, Cb, Cr) + offsets / 32, in steps
+ * of 255 (docs/firmware-facts.md).  So the matrix turns the pictures' YCbCr
+ * into the full-range BT.601 YCbCr of the same colour: the terms are that
+ * map's times CCM_DENOMINATOR / 8, the offsets its times 32.
+ */
+struct isp_matrix
+{
+	s32 terms[CCM_TERMS];     /* row by row: Y', Cb', Cr' from Y, Cb, Cr; 8192 is one */
+	s32 offsets[CCM_OFFSETS]; /* of Y', Cb', Cr'; 32 is one step of 255 */
+};
+
+/* By VCCS_*; all zero where the ISP's own conversion is right (VCCS_JPEG) or nothing is known */
+static const struct isp_matrix isp_matrices[] = {
+    [VCCS_BT601] = {{9539, 0, 0, 0, 9326, 0, 0, 0, 9326}, {-596, -567, -567}},
+    [VCCS_BT709] = {{9539, 947, 1829, 0, 9231, -1032, 0, -676, 9171}, {-1984, -4, -152}},
+    [VCCS_BT709_Full] = {{8192, 832, 1606, 0, 8109, -906, 0, -594, 8056}, {-1219, 495, 365}},
+};
+
 /* ---- the output shape ------------------------------------------------------------- */
 
 /**
@@ -98,6 +124,60 @@ static LONG shape_dest(const struct VCSessionParams *params, u32 source_w, u32 s
 }
 
 /**
+ * shape_view_whole() - The view of a shape whose picture stands at the frame's start: the frame.
+ * @shape: the shape, its geometry set
+ */
+void shape_view_whole(struct vc_shape *shape)
+{
+	shape->view = shape->geometry;
+	shape->view_start = 0;
+	shape->view_tail = 0;
+}
+
+/**
+ * shape_view_set() - Work out the ISP's view of a frame for the picture's place in it.
+ * @shape:           the shape, its format, geometry and dest set
+ * @bytes_per_pixel: of the format
+ * @free_place:      the place was the backend's choice (VCA_KeepAspect), not the client's
+ *
+ * The view starts at the picture's first pixel and has the frame's rows,
+ * each begun that far in: as many as the frame holds from there, an even
+ * number.  A picture that stands in from a row's start and reaches the
+ * frame's last row needs a view that ends past the frame, by the bytes it
+ * stands in; nothing is written there.
+ *
+ * A planar frame's planes cannot start at one place: the backend's own
+ * choice of a place becomes the frame's start there, the shape kept, and the
+ * client's is refused.
+ *
+ * Return: 0, VCERR_UNSUPPORTED for the client's place in a planar frame,
+ * VCERR_BADPARAM for a view the ISP cannot write.
+ */
+static LONG shape_view_set(struct vc_shape *shape, u32 bytes_per_pixel, BOOL free_place)
+{
+	const struct vc_geometry *geometry = &shape->geometry;
+	shape_view_whole(shape);
+	if (shape->dest.X == 0 && shape->dest.Y == 0)
+		return 0;
+	if (format_is_planar(shape->format))
+	{
+		shape->dest.X = 0;
+		shape->dest.Y = 0;
+		return free_place ? 0 : VCERR_UNSUPPORTED;
+	}
+
+	u32 start = (u32)shape->dest.Y * geometry->pitch[0] + (u32)shape->dest.X * bytes_per_pixel;
+	u32 rows = (geometry->size - start) / geometry->pitch[0] & ~1u;
+	if (rows < (u32)shape->dest.Height)
+		rows = ALIGN_UP((u32)shape->dest.Height, 2u);
+	if (!picture_geometry(shape->format, geometry->width, rows, geometry->pitch[0], &shape->view))
+		return VCERR_BADPARAM;
+	shape->view_start = start;
+	shape->view_tail = start + shape->view.size > geometry->size ? start + shape->view.size - geometry->size : 0;
+	return 0;
+}
+
+/**
  * shown_width() - The picture's width as shown: its pixels' aspect taken in.
  * @stream: the stream's shape
  *
@@ -162,8 +242,9 @@ LONG shape_resolve(struct vc_session *session)
 	shape->format = format;
 	shape->dest = dest;
 	shape->geometry = geometry;
-	shape->resolved = TRUE;
-	return 0;
+	error = shape_view_set(shape, bytes_per_pixel, params->KeepAspect != 0);
+	shape->resolved = error == 0;
+	return error;
 }
 
 /* ---- the ISP's output side ---------------------------------------------------------- */
@@ -186,7 +267,52 @@ LONG isp_open(struct vc_session *session)
 }
 
 /**
- * isp_output_configure() - The ISP's output side: the format, the frames, attached.
+ * isp_matrix_for() - The custom matrix the session's pictures need on their way to RGB.
+ * @session: the session, its stream's colour space and output shape known
+ *
+ * Return: the matrix; NULL where the ISP's own conversion is right: RGB in,
+ * YUV out, or pictures of full-range BT.601 or of nothing known.
+ */
+static const struct isp_matrix *isp_matrix_for(const struct vc_session *session)
+{
+	BOOL converts = session->kind == SESSION_CONVERTER || session->kind == SESSION_ENCODER;
+	if (converts && !format_is_yuv(session->params.InputFormat))
+		return NULL;
+	if (format_is_yuv(session->shape.format))
+		return NULL;
+	ULONG space = session->stream.ColorSpace;
+	if (space >= ARRAY_SIZE(isp_matrices) || isp_matrices[space].terms[0] == 0)
+		return NULL;
+	return &isp_matrices[space];
+}
+
+/**
+ * isp_colors_set() - Give the ISP the custom matrix of the session's pictures, or take a kept ISP's away.
+ * @session: the session, the ISP's ports committed
+ *
+ * A new ISP has none, so only a kept one is told when the session needs
+ * none.  A refusal leaves the ISP's own conversion: the picture comes, its
+ * colours as full-range BT.601's.
+ */
+static void isp_colors_set(struct vc_session *session)
+{
+	const struct isp_matrix *matrix = isp_matrix_for(session);
+	if (matrix == NULL && !session->isp->reused)
+		return;
+
+	u32 words[CCM_WORDS] = {matrix != NULL};
+	for (u32 i = 0; i < CCM_TERMS; i++)
+	{
+		words[1 + 2 * i] = matrix != NULL ? (u32)matrix->terms[i] : 0;
+		words[2 + 2 * i] = CCM_DENOMINATOR;
+	}
+	for (u32 i = 0; i < CCM_OFFSETS; i++)
+		words[1 + 2 * CCM_TERMS + i] = matrix != NULL ? (u32)matrix->offsets[i] : 0;
+	(void)mmal_port_param_set(session->base, session->isp_in, MMAL_PARAMETER_CUSTOM_CCM, words, CCM_WORDS);
+}
+
+/**
+ * isp_output_configure() - The ISP's output side: the format, the colours, the frames, attached.
  * @session: the session, the ISP created
  *
  * Run when the ISP is set up, and again after a geometry change (the port
@@ -199,7 +325,7 @@ static LONG isp_output_configure(struct vc_session *session)
 {
 	struct VideoCoreBase *base = session->base;
 	const struct vc_shape *shape = &session->shape;
-	const struct vc_geometry *geometry = &shape->geometry;
+	const struct vc_geometry *geometry = &shape->view; /* what the ISP is given of a frame */
 
 	LONG error = shape_resolve(session);
 	if (error == 0)
@@ -208,7 +334,8 @@ static LONG isp_output_configure(struct vc_session *session)
 		return error;
 
 	struct mmal_port *port = session->isp_out;
-	video_format_set(&port->format, format_encoding(shape->format), geometry->width, geometry->height, &shape->dest,
+	struct VCRect picture = rect_whole((u32)shape->dest.Width, (u32)shape->dest.Height); /* at the view's start */
+	video_format_set(&port->format, format_encoding(shape->format), geometry->width, geometry->height, &picture,
 	                 &session->stream.FrameRate);
 	(void)mmal_port_param_set_u32(base, port, MMAL_PARAMETER_NO_IMAGE_PADDING, 1);
 	port->buffer_num = session->output_set.count;
@@ -230,6 +357,7 @@ static LONG isp_output_configure(struct vc_session *session)
 		Kprintf("[videocore] the ISP wants %ld bytes per frame, the frames have %ld\n", port->buffer_size_min, geometry->size);
 		return VCERR_BADPARAM;
 	}
+	isp_colors_set(session);
 	return set_attach(session, &session->output_set, NULL, port);
 }
 
@@ -377,21 +505,16 @@ static BOOL same_output_request(const struct VCSessionParams *first, const struc
 }
 
 /**
- * isp_set_geometry() - A new output geometry for the ISP.
- * @session: a session with the ISP
- * @changes: the output tags the client set
+ * geometry_merge() - Take the output tags a client set into a session's parameters.
+ * @params:  the session's parameters
+ * @changes: the output tags the client set; 0 for one it did not
  *
- * Nothing new: the frames stay.  Before the ISP's output runs the shape is
- * only resolved again (a size given now lets frames be imported already).
- * While it runs, the output is restarted at the next poll
- * (isp_output_restart()).
- *
- * Return: 0 or the error.
+ * A field given replaces the one kept.  A new format or width without a
+ * pitch drops the pitch kept; a destination rectangle and "keep the aspect"
+ * replace each other.
  */
-static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionParams *changes)
+static void geometry_merge(struct VCSessionParams *params, const struct VCSessionParams *changes)
 {
-	struct VCSessionParams *params = &session->params;
-	struct VCSessionParams before = *params;
 	if (changes->OutputFormat != 0)
 		params->OutputFormat = changes->OutputFormat;
 	if (changes->OutputWidth != 0)
@@ -413,13 +536,44 @@ static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionP
 		params->KeepAspect = 1;
 		params->HaveDestRect = 0;
 	}
+}
+
+/**
+ * isp_set_geometry() - A new output geometry for the ISP.
+ * @session: a session with the ISP
+ * @changes: the output tags the client set
+ *
+ * Nothing new: the frames stay.  Before the ISP's output runs the shape is
+ * only resolved again (a size given now lets frames be imported already).
+ * While it runs, the output is restarted at the next poll
+ * (isp_output_restart()).  A session whose output frames were imported
+ * waits for the client to import the new ones, unless the change comes with
+ * VCA_OutputCount: then the backend makes its own again.
+ *
+ * Return: 0 or the error.
+ */
+static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionParams *changes)
+{
+	struct VCSessionParams *params = &session->params;
+	struct VCSessionParams before = *params;
+	geometry_merge(params, changes);
 
 	if (same_output_request(&before, params))
 		return 0;
 
 	session->shape.resolved = FALSE;
-	if (output_running(session))
-		return isp_output_restart(session);
+	BOOL own = changes->OutputCount != 0; /* VCA_OutputCount with the change: the backend's own frames again */
+	BOOL restarted = output_running(session);
+	LONG error = restarted ? isp_output_restart(session) : 0;
+	if (error != 0 || (restarted && !own))
+		return error;
+	if (own)
+	{
+		set_empty(session, &session->output_set); /* the client's imports, if it made some before the output ran */
+		session->output_set.imported = FALSE;
+		params->OutputCount = changes->OutputCount;
+		session->shape.resolved = FALSE;
+	}
 	if (session->have_stream || param_output_size_fixed(params))
 		return shape_resolve(session);
 	return 0;
@@ -493,6 +647,7 @@ static void converter_stream(struct vc_session *session, const struct VCRect *so
 	stream->FrameRate = session->params.FrameRate;
 	stream->Par.Num = 1;
 	stream->Par.Den = 1;
+	stream->ColorSpace = session->params.ColorSpace; /* unknown: read as full-range BT.601, the ISP's own way */
 	stream->Format = session->params.OutputFormat;
 	session->have_stream = TRUE;
 }

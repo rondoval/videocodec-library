@@ -40,6 +40,7 @@ void vq_close(struct vq_service *s);
 LONG vq_do(struct vq_service *s, UWORD command, CONST_APTR data, ULONG size, ULONG *actual);
 BOOL vq_next(struct vq_service *s, UBYTE **data, ULONG *len, ULONG timeout_ms);
 void vq_consume(struct vq_service *s);
+void vq_repost(struct vq_service *s);
 BOOL vq_get_info(struct vq_service *s, struct VchiqInfo *info);
 
 #endif /* VCHIQ_CLIENT_H */

@@ -58,7 +58,18 @@ static const struct pixel_format
 };
 #define FORMATS_NUM (sizeof(formats) / sizeof(formats[0]))
 
-/* The screen's own pixel format when the codec's decoder writes it (a plain copy then), else the first one it writes. */
+/**
+ * format_choose() - The screen's own pixel format when the codec's decoder writes it (a plain copy then), else the
+ *   first one it writes.
+ *
+ * @scr:   the screen the picture will be shown on
+ * @codec: VCC_* of the picture
+ *
+ * Looks through the codec table of videocodec.library (VC_QueryCodec()) for an image decoder of that codec, and takes
+ * its output formats that Picasso96 knows.
+ *
+ * Return: the format, NULL when no decoder writes one.
+ */
 static const struct pixel_format *format_choose(struct Screen *scr, ULONG codec)
 {
 	RGBFTYPE screen_rgb = (RGBFTYPE)p96GetBitMapAttr(scr->RastPort.BitMap, P96BMA_RGBFORMAT);
@@ -80,7 +91,16 @@ static const struct pixel_format *format_choose(struct Screen *scr, ULONG codec)
 	return pf;
 }
 
-/* The whole file in memory, NULL with the cause printed. */
+/**
+ * file_load() - The whole file in memory, NULL with the cause printed.
+ *
+ * @name:   the file name
+ * @length: receives the size in bytes
+ *
+ * The caller frees the memory with FreeVec().
+ *
+ * Return: the file's bytes, NULL when empty, unreadable or out of memory.
+ */
 static UBYTE *file_load(const char *name, ULONG *length)
 {
 	BPTR fh = Open((CONST_STRPTR)name, MODE_OLDFILE);
@@ -107,7 +127,15 @@ static UBYTE *file_load(const char *name, ULONG *length)
 	return data;
 }
 
-/* The picture's size, or smaller with the aspect kept when the screen is smaller; rows of whole 32 pixels, as the backend asks. */
+/**
+ * window_size() - The picture's size, or smaller with the aspect kept when the screen is smaller; rows of whole 32
+ *   pixels, as the backend asks.
+ *
+ * @scr:  the screen
+ * @info: the picture's header, from VC_GetImageInfo()
+ * @w:    receives the window's inner width
+ * @h:    receives the window's inner height
+ */
 static void window_size(struct Screen *scr, const struct VCImageInfo *info, ULONG *w, ULONG *h)
 {
 	ULONG room_w = (ULONG)scr->Width - 16u, room_h = (ULONG)scr->Height - (ULONG)scr->BarHeight - 32u;
@@ -127,6 +155,19 @@ static void window_size(struct Screen *scr, const struct VCImageInfo *info, ULON
 	*h &= ~1u;
 }
 
+/**
+ * show() - Show one picture in a window until its close gadget or Ctrl-C.
+ *
+ * @name:   the file name, the window's title
+ * @data:   the file's bytes
+ * @length: their number
+ *
+ * VC_GetImageInfo() reads the header, VC_DecodeImageTags() decodes into a buffer in Fast RAM, sized and converted for
+ * the window, and p96WritePixelArray() copies it in.  A picture the VideoCore does not decode (VCERR_UNSUPPORTED) is
+ * where a real viewer would decode it itself.
+ *
+ * Return: RETURN_OK, RETURN_WARN when the VideoCore does not decode it, RETURN_FAIL otherwise.
+ */
 static int show(const char *name, const UBYTE *data, ULONG length)
 {
 	struct VCImageInfo info;
@@ -209,6 +250,11 @@ static int show(const char *name, const UBYTE *data, ULONG length)
 	return rc;
 }
 
+/**
+ * main() - Entry point: open the libraries, load the file and show it.
+ *
+ * Return: the return code.
+ */
 int main(void)
 {
 	LONG args[1] = {0};

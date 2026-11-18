@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * debugport.h - lines to Emu68's debug log (the PiStorm debug address), for
- * the test tools: the begin and end marks the test suite slices the log by,
- * and TRACE's echo of every line.
+ * the test tools: VCTest's MARK, by which the suite proves the log it captures
+ * is this machine's.
  */
 #ifndef TOOLS_DEBUGPORT_H
 #define TOOLS_DEBUGPORT_H

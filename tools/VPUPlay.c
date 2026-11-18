@@ -82,7 +82,7 @@
 #include <libraries/videocodec.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 #include <pixel_format.h>
 #include <waiter.h>
 
@@ -196,7 +196,15 @@ static BOOL wait_any(struct play *p, ULONG timeout_ms, BOOL *timed_out)
 
 /* ---- the stream ------------------------------------------------------------------ */
 
-/* A packet the session handed back takes the next chunk of the file, or the end mark once. */
+/**
+ * fill_input() - A packet the session handed back takes the next chunk of the file, or the end mark once.
+ *
+ * @p:  the player
+ * @pk: the packet to fill and send
+ *
+ * With LOOP a read of zero bytes seeks to the start and reads again, so the stream simply goes on.  A failed read or
+ * send sets p->failed.
+ */
 static void fill_input(struct play *p, struct VCPacket *pk)
 {
 	if (p->eof_sent || p->failed)
@@ -212,7 +220,7 @@ static void fill_input(struct play *p, struct VCPacket *pk)
 		{
 			p->loops++;
 			if (p->verbose)
-				note("loop %lu\n", p->loops);
+				kv_note("loop %lu", p->loops);
 			n = Read(p->file, pk->Data, (LONG)pk->Capacity);
 		}
 	}
@@ -220,6 +228,7 @@ static void fill_input(struct play *p, struct VCPacket *pk)
 	if (n < 0)
 	{
 		PrintFault(IoErr(), (CONST_STRPTR) "read");
+		Flush(Output()); /* the grammar's lines go out through stdio: keep the order */
 		kv_str("fail", "reading the stream failed");
 		p->failed = TRUE;
 		return;
@@ -242,7 +251,13 @@ static void fill_input(struct play *p, struct VCPacket *pk)
 
 /* ---- pixel formats ---------------------------------------------------------------- */
 
-/* The first format of @mask, in table order. */
+/**
+ * first_format() - The first format of @mask, in table order.
+ *
+ * @mask: pixel_format_bit() flags
+ *
+ * Return: the format, NULL when @mask holds none.
+ */
 static const struct pixel_format *first_format(ULONG mask)
 {
 	for (const struct pixel_format *pf = pixel_formats; pf->name != NULL; pf++)
@@ -251,7 +266,15 @@ static const struct pixel_format *first_format(ULONG mask)
 	return NULL;
 }
 
-/* The names of the formats in @mask, comma separated: a kv list, and a message. */
+/**
+ * format_names() - The names of the formats in @mask, comma separated: a kv list, and a message.
+ *
+ * @mask: pixel_format_bit() flags
+ * @out:  where the text goes
+ * @room: size of @out
+ *
+ * Return: @out, or "none" for an empty mask.
+ */
 static const char *format_names(ULONG mask, char *out, ULONG room)
 {
 	ULONG at = 0;
@@ -269,7 +292,15 @@ static const char *format_names(ULONG mask, char *out, ULONG room)
 	return at != 0 ? out : "none";
 }
 
-/* Which of the Picasso96 formats the backend writes for @codec: its decoder's format list. */
+/**
+ * query_formats() - Which of the Picasso96 formats the backend writes: its H.264 decoder's format list.
+ *
+ * @p: the player
+ *
+ * Sets p->isp_formats and prints backend.name and backend.formats.
+ *
+ * Return: TRUE when the backend writes at least one format.
+ */
 static BOOL query_formats(struct play *p)
 {
 	for (ULONG i = 0;; i++)
@@ -296,7 +327,12 @@ static BOOL query_formats(struct play *p)
 
 /* ---- parts ------------------------------------------------------------------------- */
 
-/* Part @k back to the session, to be filled. */
+/**
+ * part_release() - Part @k back to the session, to be filled.
+ *
+ * @p: the player
+ * @k: the part
+ */
 static void part_release(struct play *p, LONG k)
 {
 	if (p->frame[k] == NULL)
@@ -305,6 +341,13 @@ static void part_release(struct play *p, LONG k)
 	p->at_session[k] = TRUE;
 }
 
+/**
+ * parts_forget() - Forget every part: no frame, not at the session, not cooling.
+ *
+ * @p: the player
+ *
+ * Before a new set of frames is imported or made.
+ */
 static void parts_forget(struct play *p)
 {
 	for (ULONG k = 0; k < MAX_PARTS; k++)
@@ -318,7 +361,17 @@ static void parts_forget(struct play *p)
 
 /* ---- the geometry ---------------------------------------------------------------------- */
 
-/* The session's output takes @t; the bitmap's parts are imported as its frames, each told its part number. */
+/**
+ * target_apply() - The session's output takes @t; the bitmap's parts are imported as its frames, each told its part
+ *   number.
+ *
+ * @p: the player
+ * @t: what the session writes
+ *
+ * Prints the output.N.* facts and keeps @t as p->target.
+ *
+ * Return: TRUE, FALSE when the session refused the geometry or a part.
+ */
 static BOOL target_apply(struct play *p, const struct target *t)
 {
 	LONG rc = VC_SetAttrsTags(p->s, VCA_OutputFormat, t->pf->vcf, VCA_OutputWidth, t->width, VCA_OutputHeight, t->height, VCA_OutputPitch,
@@ -346,7 +399,7 @@ static BOOL target_apply(struct play *p, const struct target *t)
 		if (p->frame[k] == NULL)
 		{
 			kv_str("fail", "VC_ImportFrame refused a bitmap part");
-			note("the session took no frame over %s %lu\n", t->what, k);
+			kv_note("the session took no frame over %s %lu", t->what, k);
 			return FALSE;
 		}
 		p->frame[k]->UserData = (APTR)(k + 1u); /* its part, read back when it comes full */
@@ -356,7 +409,11 @@ static BOOL target_apply(struct play *p, const struct target *t)
 
 /* ---- the screen ----------------------------------------------------------------- */
 
-/* The Workbench's depth: the one the user has screen modes for. */
+/**
+ * workbench_depth() - The Workbench's depth: the one the user has screen modes for.
+ *
+ * Return: the depth in bits, 0 when the screen cannot be locked.
+ */
 static ULONG workbench_depth(void)
 {
 	struct Screen *wb = LockPubScreen(NULL);
@@ -366,11 +423,15 @@ static ULONG workbench_depth(void)
 	UnlockPubScreen(NULL, wb);
 	return depth;
 }
-/*
- * Show part @k: the viewport scrolls down the tall bitmap; the card pans the
- * display to it.  Picasso96 waits for the vertical blank in ScrollVPort(),
- * and the VideoCore card, having no vblank interrupt, busy-polls the scan
- * line for it: up to a refresh per call (19 ms on average measured).
+
+/**
+ * show_part() - Show part @k: the viewport scrolls down the tall bitmap; the card pans the display to it.
+ *
+ * @p: the player
+ * @k: the part
+ *
+ * Picasso96 waits for the vertical blank in ScrollVPort(), and the VideoCore card, having no vblank interrupt, busy-
+ * polls the scan line for it: up to a refresh per call (19 ms on average measured).
  */
 static void show_part(struct play *p, LONG k)
 {
@@ -382,15 +443,16 @@ static void show_part(struct play *p, LONG k)
 	p->flip_done_at = t1;
 }
 
-/*
- * The flipper process runs the flips, so that the wait inside them never
- * holds up the player.  One below the player's priority: the player always
- * gets in when the VPU or the clock calls, and the poll eats only time the
- * player does not want.  CTRL_F: show p->flip_to; CTRL_C: leave (CTRL_E
- * back to the player, under Forbid() so the process is gone before it runs).
- */
+/* The player the flipper process works for, set before it starts. */
 static struct play *flipper_play;
 
+/**
+ * flipper_main() - Body of the flipper process: it runs the flips, so the player never waits inside them.
+ *
+ * One priority below the player's: the player always gets in when the VPU or the clock calls, and the poll eats only
+ * time the player does not want.  CTRL_F: show p->flip_to; CTRL_C: leave (CTRL_E back to the player, under Forbid() so
+ * the process is gone before it runs).
+ */
 static void flipper_main(void)
 {
 	struct play *p = flipper_play;
@@ -410,6 +472,13 @@ static void flipper_main(void)
 	Signal(p->waiter.task, SIGBREAKF_CTRL_E);
 }
 
+/**
+ * flipper_start() - Start the flipper process, one priority below the player.
+ *
+ * @p: the player
+ *
+ * Without one, flips are done inline.
+ */
 static void flipper_start(struct play *p)
 {
 	flipper_play = p;
@@ -420,9 +489,14 @@ static void flipper_start(struct play *p)
 	                               (ULONG)(LONG)(p->waiter.task->tc_Node.ln_Pri - 1), NP_StackSize, 8192, TAG_DONE);
 	p->flipper_used = p->flipper != NULL;
 	if (p->flipper == NULL)
-		note("no flipper process: flipping inline\n");
+		kv_note("no flipper process: flipping inline");
 }
 
+/**
+ * flipper_stop() - Stop the flipper process and wait until it is gone.
+ *
+ * @p: the player
+ */
 static void flipper_stop(struct play *p)
 {
 	if (p->flipper == NULL)
@@ -432,7 +506,15 @@ static void flipper_stop(struct play *p)
 	p->flipper = NULL;
 }
 
-/* Ask for part @k on display, taking @old off it. */
+/**
+ * flip_request() - Ask for part @k on display, taking @old off it.
+ *
+ * @p:   the player
+ * @k:   the part to show
+ * @old: the part leaving the display, -1 for none
+ *
+ * Done inline when there is no flipper.
+ */
 static void flip_request(struct play *p, LONG k, LONG old)
 {
 	p->flip_old = old;
@@ -445,7 +527,11 @@ static void flip_request(struct play *p, LONG k, LONG old)
 	Signal(&p->flipper->pr_Task, SIGBREAKF_CTRL_F);
 }
 
-/* A flip done: the part it took off the display cools from then on. */
+/**
+ * flip_settle() - A flip done: the part it took off the display cools from then on.
+ *
+ * @p: the player
+ */
 static void flip_settle(struct play *p)
 {
 	if (p->flip_old >= 0 && p->flip_to < 0)
@@ -456,6 +542,20 @@ static void flip_settle(struct play *p)
 	}
 }
 
+/**
+ * screen_setup() - Open the RTG screen and its backdrop window, and describe the session's output for it.
+ *
+ * @p:      the player
+ * @depth:  the screen's depth in bits
+ * @want_w: width wanted, 0 for the video's
+ * @want_h: height wanted, 0 for the video's
+ * @t:      filled with the output: one screen-sized part per picture height
+ *
+ * The screen is as tall as the VRAM allows: three picture heights, else two, else one.  Its bitmap must be in VRAM,
+ * rows a multiple of 32 pixels, in a format the backend writes.  The pointer is blanked over the picture.
+ *
+ * Return: TRUE, FALSE with fail= printed.
+ */
 static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h, struct target *t)
 {
 	ULONG w = want_w != 0 ? want_w : p->video_w, h = want_h != 0 ? want_h : p->video_h;
@@ -464,7 +564,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (allowed == 0)
 	{
 		kv_str("fail", "the backend writes no Picasso96 format of this depth: another DEPTH");
-		note("the backend writes %s\n", format_names(p->isp_formats, names, sizeof(names)));
+		kv_note("the backend writes %s", format_names(p->isp_formats, names, sizeof(names)));
 		return FALSE;
 	}
 	ULONG id = p96BestModeIDTags(P96BIDTAG_NominalWidth, w, P96BIDTAG_NominalHeight, h, P96BIDTAG_Depth, depth,
@@ -472,7 +572,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (id == 0 || id == (ULONG)INVALID_ID)
 	{
 		kv_str("fail", "no RTG screen mode of this size and depth in a format the backend writes: Picasso96Mode, add one");
-		note("wanted %lux%lu at %lu bits in %s\n", w, h, depth, format_names(allowed, names, sizeof(names)));
+		kv_note("wanted %lux%lu at %lu bits in %s", w, h, depth, format_names(allowed, names, sizeof(names)));
 		return FALSE;
 	}
 	p->screen_w = p96GetModeIDAttr(id, P96IDA_WIDTH);
@@ -496,14 +596,14 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (p->screen == NULL)
 	{
 		kv_str("fail", "the screen did not open, not even one picture high");
-		note("%lu MiB of VRAM for one picture at %lu bits\n",
+		kv_note("%lu MiB of VRAM for one picture at %lu bits",
 		     (p->screen_w * p->screen_h * ((mode_depth + 7u) / 8u) + (1u << 20) - 1u) >> 20, mode_depth);
 		return FALSE;
 	}
 	kv_unum("screen.parts", p->parts);
-	note("screen open: %lu picture heights, %ldx%ld\n", p->parts, (LONG)p->screen->Width, (LONG)p->screen->Height);
+	kv_note("screen open: %lu picture heights, %ldx%ld", p->parts, (LONG)p->screen->Width, (LONG)p->screen->Height);
 	p96RectFill(&p->screen->RastPort, 0, 0, (UWORD)(p->screen_w - 1u), (UWORD)(p->screen_h * p->parts - 1u), 0);
-	note("filled black\n");
+	kv_note("filled black");
 
 	struct BitMap *bm = p->screen->RastPort.BitMap;
 	LONG lock = p96LockBitMap(bm, (UBYTE *)&p->ri, sizeof(p->ri));
@@ -524,7 +624,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	if (pf == NULL || (p->isp_formats & pixel_format_bit(pf)) == 0)
 	{
 		kv_str("fail", "the bitmap's format is none the backend writes");
-		note("the backend writes %s\n", format_names(p->isp_formats, names, sizeof(names)));
+		kv_note("the backend writes %s", format_names(p->isp_formats, names, sizeof(names)));
 		return FALSE;
 	}
 	if ((pitch / pf->bpp) % 32u != 0 || ((ULONG)p->ri.Memory & 3u) != 0)
@@ -548,7 +648,7 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 	                           p->screen_h, WA_Backdrop, TRUE, WA_Borderless, TRUE, WA_Activate, TRUE, WA_RMBTrap, TRUE,
 	                           WA_IDCMP, IDCMP_RAWKEY | IDCMP_MOUSEBUTTONS, TAG_DONE);
 	if (p->window == NULL)
-		note("no window: stop with Ctrl-C\n");
+		kv_note("no window: stop with Ctrl-C");
 	else
 	{
 		/* no pointer over the picture: the card would also move it with every flip */
@@ -556,12 +656,16 @@ static BOOL screen_setup(struct play *p, ULONG depth, ULONG want_w, ULONG want_h
 		if (p->blank_pointer != NULL)
 			SetPointer(p->window, p->blank_pointer, 1, 16, 0, 0);
 	}
-	note("window open\n");
+	kv_note("window open");
 	p->shown = 0; /* the top part is on display */
 	return TRUE;
 }
 
-/* Either mode: the window, the pointer, the screen if one was opened. */
+/**
+ * display_teardown() - Either mode: the window, the pointer, the screen if one was opened.
+ *
+ * @p: the player
+ */
 static void display_teardown(struct play *p)
 {
 	if (p->window != NULL)
@@ -583,11 +687,16 @@ static void display_teardown(struct play *p)
 
 static void recycle_part(struct play *p, LONG k);
 
-/*
- * The picture's size and place in the window's inner area, kept to the
- * video's aspect.  Its width is a whole number of 32-pixel groups, so the
- * VPU writes full rows of exactly that width and nothing depends on how it
- * treats a crop narrower than its rows.  FALSE when the window is too small.
+/**
+ * window_geometry() - The picture's size and place in the window's inner area, kept to the video's aspect.
+ *
+ * @p: the player
+ * @t: the output to fill in
+ *
+ * Its width is a whole number of 32-pixel groups, so the VPU writes full rows of exactly that width and nothing depends
+ * on how it treats a crop narrower than its rows.
+ *
+ * Return: TRUE, FALSE when the window is too small.
  */
 static BOOL window_geometry(struct play *p, struct target *t)
 {
@@ -615,7 +724,11 @@ static BOOL window_geometry(struct play *p, struct target *t)
 	return TRUE;
 }
 
-/* Black around the picture (or everywhere, with no picture yet). */
+/**
+ * window_fill_bars() - Black around the picture (or everywhere, with no picture yet).
+ *
+ * @p: the player
+ */
 static void window_fill_bars(struct play *p)
 {
 	struct Window *w = p->window;
@@ -641,7 +754,12 @@ static void window_fill_bars(struct play *p)
 		p96RectFill(rp, (UWORD)(px1 + 1), (UWORD)py0, (UWORD)x1, (UWORD)py1, 0);
 }
 
-/* Frame @k into the window: Picasso96 copies it, clipped by the layers (other windows stay on top). */
+/**
+ * window_draw() - Frame @k into the window: Picasso96 copies it, clipped by the layers (other windows stay on top).
+ *
+ * @p: the player
+ * @k: the buffer, negative for none
+ */
 static void window_draw(struct play *p, LONG k)
 {
 	if (k < 0 || p->frame[k] == NULL)
@@ -655,7 +773,13 @@ static void window_draw(struct play *p, LONG k)
 	p96WritePixelArray(&ri, 0, 0, p->window->RPort, (UWORD)p->pic_x, (UWORD)p->pic_y, (UWORD)t->width, (UWORD)t->height);
 }
 
-/* The frame in buffer @k is due: copied in; the buffer shown before goes back to the session, this one stays for redraws. */
+/**
+ * window_present() - The frame in buffer @k is due: copied in; the buffer shown before goes back to the session, this
+ *   one stays for redraws.
+ *
+ * @p: the player
+ * @k: the buffer
+ */
 static void window_present(struct play *p, LONG k)
 {
 	u32 t0 = get_time();
@@ -667,10 +791,18 @@ static void window_present(struct play *p, LONG k)
 	recycle_part(p, old);
 }
 
-/*
- * A window on the default public screen, the video's aspect, half the
- * screen's size unless WIDTH/HEIGHT give its inner size.  The session writes
- * the screen's own pixel format when it can, so the copy is a plain copy.
+/**
+ * window_setup() - Open a window on the default public screen, the video's aspect, half the screen's size unless
+ *   WIDTH/HEIGHT give its inner size.
+ *
+ * @p:      the player
+ * @want_w: inner width wanted, 0 for the default
+ * @want_h: inner height wanted, 0 for the default
+ * @t:      receives the pixel format and the picture's geometry
+ *
+ * The session writes the screen's own pixel format when it can, so the copy is a plain copy.
+ *
+ * Return: TRUE, FALSE with fail= printed.
  */
 static BOOL window_setup(struct play *p, ULONG want_w, ULONG want_h, struct target *t)
 {
@@ -704,7 +836,7 @@ static BOOL window_setup(struct play *p, ULONG want_w, ULONG want_h, struct targ
 			UnlockPubScreen(NULL, scr);
 			return FALSE;
 		}
-		note("the screen's pixel format %lu is none the backend writes: it writes %s, which Picasso96 converts while copying\n",
+		kv_note("the screen's pixel format %lu is none the backend writes: it writes %s, which Picasso96 converts while copying",
 		     (ULONG)rgb, pf->name);
 	}
 	t->pf = pf;
@@ -743,10 +875,14 @@ static BOOL window_setup(struct play *p, ULONG want_w, ULONG want_h, struct targ
 	return TRUE;
 }
 
-/*
- * The window changed size: the session's output takes the new picture size
- * and makes new frames; the decoder runs on, and frames converted for the
- * old size are dropped with the old frames.
+/**
+ * window_resize() - The window changed size: the session's output takes the new picture size and makes new frames.
+ *
+ * @p: the player
+ *
+ * The decoder runs on, and frames converted for the old size are dropped with the old frames.
+ *
+ * Return: TRUE, also when the window is too small for a picture; FALSE when the session refused the new geometry.
  */
 static BOOL window_resize(struct play *p)
 {
@@ -768,11 +904,15 @@ static BOOL window_resize(struct play *p)
 
 /* ---- the loop -------------------------------------------------------------------- */
 
-/*
- * WINDOWTEST: the window moves, grows and shrinks by itself, one step every
- * six seconds of play, as a user's drags would.  Intuition reports each as it
- * reports a drag (IDCMP_CHANGEWINDOW, IDCMP_NEWSIZE), so the same code
- * follows it.  Each box is kept on the screen.
+/**
+ * window_test_step() - WINDOWTEST: the window moves, grows and shrinks by itself, one step every six seconds of play,
+ *   as a user's drags would.
+ *
+ * @p:   the player
+ * @now: the time, get_time()
+ *
+ * Intuition reports each as it reports a drag (IDCMP_CHANGEWINDOW, IDCMP_NEWSIZE), so the same code follows it.  Each
+ * box is kept on the screen.
  */
 static void window_test_step(struct play *p, u32 now)
 {
@@ -795,7 +935,12 @@ static void window_test_step(struct play *p, u32 now)
 	p->window_test_done++;
 }
 
-/* A part goes back to the session: never the one shown, nor one still cooling. */
+/**
+ * recycle_part() - A part goes back to the session: never the one shown, nor one still cooling.
+ *
+ * @p: the player
+ * @k: the part
+ */
 static void recycle_part(struct play *p, LONG k)
 {
 	if (k >= 0 && k != (p->parts == 1 ? -1 : p->shown) && k != p->flip_old && !p->at_session[k] && !p->cooling[k] && !p->failed &&
@@ -803,10 +948,14 @@ static void recycle_part(struct play *p, LONG k)
 		part_release(p, k);
 }
 
-/*
- * Parts that left the display a refresh ago are not scanned any more: the
- * VPU may fill them while the frame on display waits out its time, so with
- * three parts it always has the next one to work on.
+/**
+ * release_cooled() - Release the parts that left the display a refresh ago.
+ *
+ * @p:   the player
+ * @now: the time, get_time()
+ *
+ * They are not scanned any more: the VPU may fill them while the frame on display waits out its time, so with three
+ * parts it always has the next one to work on.
  */
 static void release_cooled(struct play *p, u32 now)
 {
@@ -818,10 +967,14 @@ static void release_cooled(struct play *p, u32 now)
 		}
 }
 
-/*
- * A frame the session filled is a picture to show, in order of arrival.  Its
- * part number rides in UserData, given at the import; one of the session's
- * own frames takes the first free part when it first arrives.
+/**
+ * frame_arrived() - A frame the session filled is a picture to show, in order of arrival.
+ *
+ * @p: the player
+ * @f: the frame
+ *
+ * Its part number rides in UserData, given at the import; one of the session's own frames takes the first free part
+ * when it first arrives.
  */
 static void frame_arrived(struct play *p, struct VCFrame *f)
 {
@@ -841,7 +994,7 @@ static void frame_arrived(struct play *p, struct VCFrame *f)
 	}
 	p->at_session[k] = FALSE;
 	if (p->verbose)
-		note("frame in part %ld, pts %lu, flags %lx\n", k, (ULONG)f->Pts, f->Flags);
+		kv_note("frame in part %ld, pts %lu, flags %lx", k, (ULONG)f->Pts, f->Flags);
 	if (p->failed)
 	{
 		recycle_part(p, k);
@@ -851,6 +1004,15 @@ static void frame_arrived(struct play *p, struct VCFrame *f)
 	p->ready[p->ready_n++] = k; /* at most parts - 1 can be out at once */
 }
 
+/**
+ * show_ready() - Show the oldest ready picture when it is due, or at once with FAST.
+ *
+ * @p:   the player
+ * @now: the time, get_time()
+ *
+ * One flip at a time.  The pacing clock starts with the first picture.  A window copies the frame in; a screen flips to
+ * its part.
+ */
 static void show_ready(struct play *p, u32 now)
 {
 	if (p->ready_n == 0 || p->flip_old >= 0) /* one flip at a time */
@@ -879,13 +1041,18 @@ static void show_ready(struct play *p, u32 now)
 		return;
 	}
 	if (p->displayed <= 3 || p->verbose)
-		note("frame %lu: showing part %ld\n", p->displayed, k);
+		kv_note("frame %lu: showing part %ld", p->displayed, k);
 	LONG old = p->shown;
 	p->shown = k;
 	flip_request(p, k, old);
 	flip_settle(p); /* at once when flipped inline */
 }
 
+/**
+ * check_window() - Take the window's messages: close, key or button stops; resize, move and refresh are followed.
+ *
+ * @p: the player
+ */
 static void check_window(struct play *p)
 {
 	if (p->window == NULL)
@@ -933,10 +1100,19 @@ static void stream_facts(struct play *p, const struct VCStreamInfo *si)
 	p->streams++;
 }
 
-/*
- * The decoder told the stream's shape: the display opens for it, the
- * session's output takes the display's geometry, and the parts go to work.
+/**
+ * display_setup() - The decoder told the stream's shape: the display opens for it, the session's output takes the
+ *   display's geometry, and the parts go to work.
+ *
+ * @p:      the player
+ * @si:     the stream
+ * @depth:  the screen's depth in bits
+ * @want_w: width wanted, 0 for the video's
+ * @want_h: height wanted, 0 for the video's
+ *
  * Everything before the next poll, as the library asks.
+ *
+ * Return: TRUE, FALSE with fail= printed.
  */
 static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG depth, ULONG want_w, ULONG want_h)
 {
@@ -954,13 +1130,13 @@ static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG d
 		p->fps = 30;
 	p->frame_us = 1000000u / p->fps;
 
-	note("decoder told the size; opening the display\n");
+	kv_note("decoder told the size; opening the display");
 	struct target t;
 	for (ULONG i = 0; i < sizeof(t); i++)
 		((UBYTE *)&t)[i] = 0;
 	if (!(p->windowed ? window_setup(p, want_w, want_h, &t) : screen_setup(p, depth, want_w, want_h, &t)))
 		return FALSE;
-	note("display ready; setting the output geometry\n");
+	kv_note("display ready; setting the output geometry");
 	if (!target_apply(p, &t))
 		return FALSE;
 	/* full screen: the top part is on display, the others take the first frames (with one part, that one); a window: the session's own */
@@ -969,7 +1145,7 @@ static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG d
 			part_release(p, k);
 	kv_unum("play.fps_set", p->fps);
 	kv_bool("play.fast", p->fast);
-	note("playing at %lu fps%s, %lu %s; %s stops\n", p->fps, p->fast ? " (as fast as it goes)" : "", p->parts,
+	kv_note("playing at %lu fps%s, %lu %s; %s stops", p->fps, p->fast ? " (as fast as it goes)" : "", p->parts,
 	     p->windowed ? "frames" : "bitmap parts", p->windowed ? "the close gadget or any key" : "any key or mouse button");
 	if (!p->windowed)
 		flipper_start(p);
@@ -977,6 +1153,17 @@ static BOOL display_setup(struct play *p, const struct VCStreamInfo *si, ULONG d
 	return TRUE;
 }
 
+/**
+ * play() - Open the decoder session and play the file until the end, a stop or a failure; print the play.* facts.
+ *
+ * @p:      the player
+ * @depth:  the screen's depth in bits, 0 for the Workbench's
+ * @want_w: width wanted, 0 for the default
+ * @want_h: height wanted, 0 for the default
+ *
+ * Return: RETURN_OK, RETURN_WARN stopped before a picture, RETURN_FAIL, RETURN_ERROR when the display could not be set
+ *   up.
+ */
 static int play(struct play *p, ULONG depth, ULONG want_w, ULONG want_h)
 {
 	if (depth == 0)
@@ -1101,7 +1288,7 @@ static int play(struct play *p, ULONG depth, ULONG want_w, ULONG want_h)
 			}
 			kv_bool("play.idle", TRUE);
 			kv_str("fail", "nothing happened");
-			note("nothing happened for %lu ms: frames %lu, displayed %lu, ready %lu, in VPU %lu/%lu/%lu\n", (ULONG)IDLE_MS, p->frames,
+			kv_note("nothing happened for %lu ms: frames %lu, displayed %lu, ready %lu, in VPU %lu/%lu/%lu", (ULONG)IDLE_MS, p->frames,
 			     p->displayed, p->ready_n, (ULONG)p->at_session[0], (ULONG)p->at_session[1], (ULONG)p->at_session[2]);
 			p->failed = TRUE;
 			break;
@@ -1182,6 +1369,11 @@ enum
 	ARG_COUNT
 };
 
+/**
+ * main() - Entry point: read the arguments, open the libraries, play, print the verdict.
+ *
+ * Return: the return code, from kv_end().
+ */
 int main(void)
 {
 	LONG args[ARG_COUNT];
@@ -1195,10 +1387,10 @@ int main(void)
 		PrintFault(IoErr(), (CONST_STRPTR) "VPUPlay");
 		return RETURN_FAIL;
 	}
-	kv_init("VPUPlay", args[ARG_TRACE] != 0);
+	kv_debug_log("VPUPlay", (const char *)GetArgStr(), args[ARG_TRACE] != 0);
+	kv_begin("PLAY");
 	kv_num("cli", ((struct Process *)FindTask(NULL))->pr_TaskNum);
 	kv_str("play.file", (const char *)args[ARG_FILE]);
-	kv_begin((const char *)GetArgStr());
 
 	int rc = RETURN_ERROR;
 	static struct play p;
@@ -1238,6 +1430,7 @@ int main(void)
 	if (p.file == 0)
 	{
 		PrintFault(IoErr(), (CONST_STRPTR)args[ARG_FILE]);
+		Flush(Output()); /* the grammar's lines go out through stdio: keep the order */
 		kv_str("fail", "the stream did not open");
 		goto out;
 	}
@@ -1253,8 +1446,7 @@ int main(void)
 	display_teardown(&p);
 
 out:
-	kv_verdict(rc);
-	kv_end(rc);
+	rc = kv_end(rc);
 	if (p.file != 0)
 		Close(p.file);
 	waiter_close(&p.waiter);

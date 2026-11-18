@@ -266,6 +266,7 @@ enum
 #define MMAL_PARAMETER_EXIF (MMAL_PARAMETER_GROUP_CAMERA + 0x04)                    /* "key=value" bytes */
 #define MMAL_PARAMETER_MIRROR (MMAL_PARAMETER_GROUP_CAMERA + 0x0f)                  /* MMAL_PARAM_MIRROR_* */
 #define MMAL_PARAMETER_JPEG_Q_FACTOR (MMAL_PARAMETER_GROUP_CAMERA + 0x19)           /* the JPEG quality, 1..100, on the output */
+#define MMAL_PARAMETER_CUSTOM_CCM (MMAL_PARAMETER_GROUP_CAMERA + 0x58)              /* ril.isp's input: {enable, nine rationals row by row, three offsets} (docs/firmware-facts.md) */
 #define MMAL_PARAMETER_JPEG_RESTART_INTERVAL (MMAL_PARAMETER_GROUP_CAMERA + 0x50)
 #define MMAL_PARAMETER_CROP (MMAL_PARAMETER_GROUP_CAMERA + 0x55)                    /* {x, y, width, height} of the input picture used */
 #define MMAL_PARAMETER_JPEG_IJG_SCALING (MMAL_PARAMETER_GROUP_CAMERA + 0x61)        /* 0 or 1 */

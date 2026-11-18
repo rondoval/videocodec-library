@@ -41,6 +41,7 @@
 
 #define IMAGE_TIMEOUT_MS 5000 /* each pass's wait when the caller gives none */
 #define IMAGE_RUN_WAITING 1   /* image_drain(): nothing ended the wait yet */
+#define IMAGE_SETTLE_MS 5000  /* past a timeout, how long the picture on the VPU may take to end */
 
 /* One image call's waiting: the caller's task, woken by its sessions' signal or the timer */
 struct image_run
@@ -363,11 +364,12 @@ static LONG image_drain(struct image_run *run, struct vc_session *session, struc
 }
 
 /**
- * image_wait() - Wait for a session's output, at most the call's timeout.
- * @run:     the call
- * @session: the session, its input sent or to be fed
- * @feed:    the bytes for its own input packets, or NULL
- * @out:     where the output's item goes
+ * image_wait_for() - Wait for a session's output, at most @timeout_ms.
+ * @run:        the call
+ * @session:    the session, its input sent or to be fed
+ * @feed:       the bytes for its own input packets, or NULL
+ * @out:        where the output's item goes
+ * @timeout_ms: how long at most
  *
  * The timer is armed once, so it bounds the whole wait however often the
  * session signals.  Each round takes what the session has before it looks at
@@ -377,12 +379,12 @@ static LONG image_drain(struct image_run *run, struct vc_session *session, struc
  *
  * Return: 0 with @out filled, the session's error, or VCERR_TIMEOUT.
  */
-static LONG image_wait(struct image_run *run, struct vc_session *session, struct image_feed *feed, struct VCItem *out)
+static LONG image_wait_for(struct image_run *run, struct vc_session *session, struct image_feed *feed, struct VCItem *out,
+                           ULONG timeout_ms)
 {
 	struct ExecBase *SysBase = run->base->SysBase;
 	ULONG timer_signal = drv_timer_sigmask(&run->timer);
-	PERF_T0(t0);
-	drv_timer_arm_ms(&run->timer, run->timeout_ms);
+	drv_timer_arm_ms(&run->timer, timeout_ms);
 	LONG result;
 	for (;;)
 	{
@@ -398,6 +400,35 @@ static LONG image_wait(struct image_run *run, struct vc_session *session, struct
 		}
 	}
 	drv_timer_cancel(&run->timer);
+	return result;
+}
+
+/**
+ * image_wait() - Wait for a session's output, at most the call's timeout.
+ * @run:     the call
+ * @session: the session, its input sent or to be fed
+ * @feed:    the bytes for its own input packets, or NULL
+ * @out:     where the output's item goes
+ *
+ * A pass that times out still lets the picture on the VPU end, for up to
+ * IMAGE_SETTLE_MS more, before its session is closed: the firmware stops
+ * answering on every service when a port is disabled in the middle of a
+ * picture (docs/firmware-facts.md).  The caller is answered VCERR_TIMEOUT
+ * all the same, and the VPU writes nothing of the caller's after the call.
+ *
+ * Return: 0 with @out filled, the session's error, or VCERR_TIMEOUT.
+ */
+static LONG image_wait(struct image_run *run, struct vc_session *session, struct image_feed *feed, struct VCItem *out)
+{
+	PERF_T0(t0);
+	LONG result = image_wait_for(run, session, feed, out, run->timeout_ms);
+	if (result == VCERR_TIMEOUT)
+	{
+		struct VCItem late; /* the picture that came after the timeout: dropped with the session */
+		LONG settled = image_wait_for(run, session, feed, &late, IMAGE_SETTLE_MS);
+		if (settled == VCERR_TIMEOUT)
+			Kprintf("[videocore] image call: the picture did not end %lu ms past the timeout\n", (ULONG)IMAGE_SETTLE_MS);
+	}
 	PERF_ADD(&run->base->perf, VCPERF_IMG_WAIT, t0);
 	return result;
 }

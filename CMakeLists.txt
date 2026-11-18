@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-project(emu68-vchiq VERSION 0.5)
+project(emu68-vchiq VERSION 0.6)
 # The one version of the repository: every binary takes it (project(... VERSION
 # ${CMAKE_PROJECT_VERSION}) in its directory, the tools directly), the sources have no
 # number of their own and the SFDs carry none.  Bump it here only.
@@ -36,7 +36,7 @@ endif()
 # doorbell interrupt server).  The client headers of mailbox.resource (the VCHIQ init
 # tag goes through MB_RawCommand) and cma.resource (the window), and the Picasso96 API
 # headers of the players, come with the toolchain image (amiga-build-container).
-find_package(Emu68Common 2.3 CONFIG REQUIRED) # 2.3: prefs_open(), strfit(); 2.1: drv_waitq, the dma-ranges/symbol/carve-out devtree helpers
+find_package(Emu68Common 2.4 CONFIG REQUIRED) # 2.4: the test harness (Emu68Common::kv, emu68test); 2.3: prefs_open(), strfit(); 2.1: drv_waitq, the dma-ranges/symbol/carve-out devtree helpers
 find_package(GIC400 1.3 CONFIG REQUIRED)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -81,3 +81,9 @@ add_subdirectory(ahi)
 add_subdirectory(datatype)
 add_subdirectory(tools)
 add_subdirectory(tests/swconv) # the suite's software converter: built, never installed
+
+# vchiqtest: the suite's VideoCore part of the test harness, for the codec
+# backends' suites too (they take it from the install tree, never from this one).
+install(DIRECTORY tests/vchiqtest DESTINATION share/vchiq-testing
+    FILES_MATCHING PATTERN "*.py" PATTERN "__pycache__" EXCLUDE)
+install(FILES tests/requirements.txt DESTINATION share/vchiq-testing)

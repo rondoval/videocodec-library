@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from harness.results import expect
-from harness.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
+from emu68test.results import expect
+from vchiqtest.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
 
 BORDERS = (4, 11, 4, 2)  # a Workbench window's left, top, right and bottom borders when nothing better is known
 SETTLE_S = 3  # from a player's start to its screen showing the bars
@@ -45,7 +45,7 @@ def test_full_screen(device, material, baselines, record_property):
     assert r.passed, r.kv.get("fail")
     assert r.num("play.shown") == 300 and r.num("play.parts") == 3
     record_property("late", r.kv.get("play.late"))
-    baselines.check("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
+    baselines.check_near("fullscreen.play.fps", r.num("play.fps"), higher=True, tolerance="10%")
 
 
 def test_full_screen_zero_copy(device, material, driver_log):
@@ -124,10 +124,9 @@ def test_no_room_for_a_decoder(device, material):
     jobs = [device.start("VPUPlay", f"{stream} WINDOW LOOP") for _ in range(2)]
     try:
         time.sleep(6)
-        started = time.time()
         r = vpuplay(device, f"{stream} WINDOW FRAMES 30", 30)
-        took = time.time() - started
         assert r.rc == 20 and r.kv.get("fail") == "VC_SendPacket failed", f"rc {r.rc}, {r.kv.get('fail')}"
+        took = r.num("play.total_us") / 1e6     # the player's own clock: the agent is slow beside two decoders
         assert took < 4, f"refused after {took:.1f} s"
     finally:
         for job in jobs:
@@ -176,6 +175,7 @@ def test_shape_change_on_screen(device, material):
     assert not problems, "; ".join(problems)
 
 
+@pytest.mark.covers("VCA_KeepAspect")
 def test_pixel_aspect_on_screen(device, material, driver_log):
     """A 720x576 stream of 64:45 pixels placed 16:9 on screen, as a TV shows it, not 5:4."""
     mark = driver_log.mark()

@@ -6,7 +6,9 @@
  * picture's time is held against what was sent.  ENDEMPTY ends with a bare
  * mark.  HOLD keeps the packets after the nth, so that the encoder stalls, and
  * closes the session like that.  PACE sends at FPS, as a recorder does, where
- * ENCODE otherwise sends as fast as frames come back.
+ * ENCODE otherwise sends as fast as frames come back.  PROFILE, LEVEL, RATE
+ * and COLORSPACE go to the session as VCA_Profile, VCA_Level,
+ * VCA_RateControl and VCA_ColorSpace.
  */
 #ifdef __INTELLISENSE__
 #include <clib/exec_protos.h>
@@ -22,7 +24,8 @@
 #include <exec/memory.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
+#include <strutil.h>
 #include <timing.h>
 #include <vc_names.h>
 
@@ -30,12 +33,14 @@
 #include "picture.h"
 
 const char encode_template[] =
-    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FPS/N,BITRATE/N,KEYINT/N,KEYREQ/N,BACKEND/K,FORMAT/K,OUTWIDTH/K/N,OUTHEIGHT/K/N,HOLD/K/N,GAPS/S,ENDEMPTY/S,PACE/S,PACKET/K/N";
+    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FPS/N,BITRATE/N,KEYINT/N,KEYREQ/N,BACKEND/K,FORMAT/K,OUTWIDTH/K/N,OUTHEIGHT/K/N,HOLD/K/N,GAPS/S,ENDEMPTY/S,PACE/S,PACKET/K/N,"
+    "PROFILE/K,LEVEL/K/N,RATE/K,COLORSPACE/K";
 
 #define HOLD_MS 1000u  /* with HOLD, nothing moving for this long is the stall asked for */
 #define GAP_EVERY 10u  /* GAPS: pictures between two gaps */
 #define GAP_US 200000u /* GAPS: how long each is */
 #define FRAME_LATE_US 10000u /* PACE: a picture this far behind its time counts as late */
+#define UNNAMED 0xffffffffu  /* a name no table has */
 
 enum
 {
@@ -55,7 +60,42 @@ enum
 	ARG_GAPS,
 	ARG_ENDEMPTY,
 	ARG_PACE,
-	ARG_PACKET
+	ARG_PACKET,
+	ARG_PROFILE,
+	ARG_LEVEL,
+	ARG_RATE,
+	ARG_COLORSPACE
+};
+
+/* A name an argument may give, and the value it stands for */
+struct named_value
+{
+	const char *name;
+	ULONG value;
+};
+
+static const struct named_value profiles[] = {
+    {"BASELINE", VCP_H264_Baseline},
+    {"CONSTRAINED", VCP_H264_ConstrainedBaseline},
+    {"MAIN", VCP_H264_Main},
+    {"HIGH", VCP_H264_High},
+    {NULL, 0},
+};
+
+static const struct named_value rate_controls[] = {
+    {"VBR", VCRC_VBR},
+    {"CBR", VCRC_CBR},
+    {NULL, 0},
+};
+
+/* What ENCODE's names chose */
+struct encode_choice
+{
+	ULONG format;       /* VCF_* of the raw pictures */
+	ULONG profile;      /* VCP_*, VCP_Default without PROFILE */
+	ULONG level;        /* H.264 level times ten, 0 without LEVEL */
+	ULONG rate_control; /* VCRC_*, VCRC_Default without RATE */
+	ULONG color_space;  /* VCCS_*, VCCS_Unknown without COLORSPACE */
 };
 
 /* One ENCODE run */
@@ -272,11 +312,56 @@ static void encode_loop(struct encode *e)
 		{
 			kv_bool("encode.idle", seen == 0);
 			kv_str("fail", seen == 0 ? "nothing happened" : "stopped");
-			note("nothing happened for %lu ms (or Ctrl-C): %lu pictures sent, %lu packets back\n", (ULONG)IDLE_MS, e->sent, e->packets);
+			kv_note("nothing happened for %lu ms (or Ctrl-C): %lu pictures sent, %lu packets back", (ULONG)IDLE_MS, e->sent, e->packets);
 			e->failed = TRUE;
 			return;
 		}
 	}
+}
+
+/**
+ * named() - The value an argument's name stands for.
+ * @table:    the names, ended by a NULL name
+ * @name:     the argument, or NULL when not given
+ * @fallback: the value without the argument
+ *
+ * Return: the name's value, @fallback without one, UNNAMED for a name the table does not have.
+ */
+static ULONG named(const struct named_value *table, const char *name, ULONG fallback)
+{
+	if (name == NULL)
+		return fallback;
+	for (; table->name != NULL; table++)
+		if (_Stricmp((CONST_STRPTR)name, (CONST_STRPTR)table->name) == 0)
+			return table->value;
+	return UNNAMED;
+}
+
+/**
+ * encode_choose() - ENCODE's named arguments: FORMAT, PROFILE, LEVEL, RATE and COLORSPACE.
+ * @args:   encode_template's
+ * @choice: filled with what they chose, printed as encode.profile, encode.level,
+ *          encode.rate_control and encode.color_space
+ *
+ * Return: NULL, or why the arguments make no sense.
+ */
+static const char *encode_choose(LONG *args, struct encode_choice *choice)
+{
+	const char *format = arg_str(args, ARG_FORMAT);
+	choice->format = format != NULL ? format_of_name(format) : VCF_I420;
+	choice->profile = named(profiles, arg_str(args, ARG_PROFILE), VCP_Default);
+	choice->level = arg_num(args, ARG_LEVEL, 0);
+	choice->rate_control = named(rate_controls, arg_str(args, ARG_RATE), VCRC_Default);
+	choice->color_space = color_space_of_name(arg_str(args, ARG_COLORSPACE));
+	kv_unum("encode.profile", choice->profile);
+	kv_unum("encode.level", choice->level);
+	kv_unum("encode.rate_control", choice->rate_control);
+	kv_unum("encode.color_space", choice->color_space);
+	if (choice->format == 0)
+		return "no such format";
+	if (choice->profile == UNNAMED || choice->rate_control == UNNAMED || choice->color_space == COLOR_SPACE_UNNAMED)
+		return "PROFILE: BASELINE, CONSTRAINED, MAIN or HIGH; RATE: VBR or CBR; COLORSPACE: BT601, BT709, JPEG or BT709FULL";
+	return NULL;
 }
 
 /**
@@ -302,19 +387,20 @@ int do_encode(struct tool *t, LONG *args)
 	e.pace = args[ARG_PACE] != 0;
 	ULONG bitrate = arg_num(args, ARG_BITRATE, 0), keyint = arg_num(args, ARG_KEYINT, 0);
 	ULONG out_w = arg_num(args, ARG_OUTWIDTH, 0), out_h = arg_num(args, ARG_OUTHEIGHT, 0), packet = arg_num(args, ARG_PACKET, 0);
-	const char *format_arg = arg_str(args, ARG_FORMAT);
-	ULONG format = format_arg != NULL ? format_of_name(format_arg) : VCF_I420;
+	struct encode_choice choice;
+	const char *wrong = encode_choose(args, &choice);
 	t->backend = arg_str(args, ARG_BACKEND);
 	if (e.w == 0 || e.h == 0)
 	{
 		kv_str("fail", "ENCODE needs WIDTH and HEIGHT");
 		return RETURN_FAIL;
 	}
-	if (format == 0)
+	if (wrong != NULL)
 	{
-		kv_str("fail", "no such format");
+		kv_str("fail", wrong);
 		return RETURN_FAIL;
 	}
+	ULONG format = choice.format;
 	ULONG picture_bytes = raw_bytes(format, e.w, e.h);
 	e.file = Open((CONST_STRPTR)raw, MODE_OLDFILE);
 	if (e.file == 0)
@@ -347,7 +433,8 @@ int do_encode(struct tool *t, LONG *args)
 	e.s = VC_OpenSessionTags(VCA_Codec, VCC_H264, VCA_Kind, VCK_Encoder, VCA_Width, e.w, VCA_Height, e.h, VCA_InputFormat, format,
 	                         VCA_OutputWidth, out_w, VCA_OutputHeight, out_h, VCA_FrameRateNum, e.fps, VCA_FrameRateDen, 1, VCA_Bitrate, bitrate, VCA_KeyInterval, keyint, VCA_SigTask,
 	                         (ULONG)t->waiter.task, VCA_SigMask, waiter_sigmask(&t->waiter), VCA_InputCount, 2, VCA_OutputCount, 4, VCA_OutputSize, packet, BACKEND_TAG(t),
-	                         VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                         VCA_Profile, choice.profile, VCA_Level, choice.level, VCA_RateControl, choice.rate_control, VCA_ColorSpace,
+	                         choice.color_space, VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	kv_str("encode.session", e.s != NULL ? "open" : "refused");
 	if (e.s == NULL)
 	{

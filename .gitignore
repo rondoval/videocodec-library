@@ -67,6 +67,7 @@ install/
 tests/runs/
 tests/.cache/
 tests/.venv/
+tests/.machine/
 
 # Python
 __pycache__/

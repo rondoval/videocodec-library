@@ -3,15 +3,17 @@
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg
-from harness.pictures import judge_bars, key_frames, pattern, psnr, raw_bars, y_planes
-from harness.tools import assert_nothing_left, derived, vctest
+from vchiqtest.material import ffmpeg
+from vchiqtest.pictures import judge_bars, key_frames, pattern, psnr, raw_bars, y_planes
+from vchiqtest.tools import assert_nothing_left, derived, vctest
 from test_vcgrab import rgb_picture, stream_fields
 
 W, H = 640, 360     # the bars through the ISP
 PICTURES = 12
 PACKET = 512 * 1024 # a key frame of noise is over 1 MB
 NOISE_BITS = 25000000
+VCERR_BADPARAM = -4
+VCERR_UNSUPPORTED = -6
 
 
 def encode(device, material, artifacts, extra, name):
@@ -26,6 +28,8 @@ def encode(device, material, artifacts, extra, name):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VC_SendFrame", "VC_ReleasePacket", "VCA_Width", "VCA_Height", "VCA_InputFormat", "VCA_Bitrate",
+                    "VCA_KeyInterval", "VCA_OutputCount", "VCA_OutputSize")
 def test_h264_encode(device, material, baselines, artifacts, record_property):
     """Thirty pictures at 4 Mbit/s, a key frame every ten: decodable, three key frames, close to the source."""
     r, h264 = encode(device, material, artifacts, "BITRATE 4000000 KEYINT 10", "out.h264")
@@ -35,10 +39,11 @@ def test_h264_encode(device, material, baselines, artifacts, record_property):
     got = y_planes(ffmpeg("-i", str(h264), "-f", "rawvideo", "-pix_fmt", "yuv420p", "-"), 1920, 1080, 30)
     ref = y_planes(material.path("clip30.i420"), 1920, 1080, 30)
     score = sum(psnr(a, b) for a, b in zip(got, ref)) / len(got)
-    baselines.check("h264_encode_4mbit.psnr_db", round(score, 1), higher=True, tolerance=2.0)
-    baselines.check("h264_encode_4mbit.encode.fps", r.num("encode.fps"), higher=True, tolerance="15%")
+    baselines.check_near("h264_encode_4mbit.psnr_db", round(score, 1), higher=True, tolerance=2.0)
+    baselines.check_near("h264_encode_4mbit.encode.fps", r.num("encode.fps"), higher=True, tolerance="15%")
 
 
+@pytest.mark.covers("VCA_RequestKeyFrame", "VC_SetAttrs")
 def test_key_frame_on_request(device, material, artifacts, record_property):
     """VCA_RequestKeyFrame before picture 15, with key frames otherwise every hundred."""
     r, h264 = encode(device, material, artifacts, "KEYINT 100 KEYREQ 15", "key.h264")
@@ -82,6 +87,7 @@ def test_rgb_through_the_isp(device, artifacts, record_property, fmt):
 
 
 @pytest.mark.parametrize("size", [(320, 180), (1280, 720)], ids=["down", "up"])
+@pytest.mark.covers("VCA_OutputWidth", "VCA_OutputHeight")
 def test_scaled_through_the_isp(device, artifacts, size):
     """VCA_OutputWidth and VCA_OutputHeight are the size encoded, the bars where they belong."""
     width, height = size
@@ -150,6 +156,54 @@ def test_noise_through_the_isp(device, artifacts, record_property):
     assert r.passed, r.kv.get("fail")
     record_property("late", r.num("encode.late"))
     assert r.num("encode.pictures_out") == 60 and r.num("encode.pts_wrong") == 0, r.kv
+
+
+@pytest.mark.parametrize("profile, shown", [("CONSTRAINED", "Constrained Baseline"), ("MAIN", "Main"), ("HIGH", "High")])
+@pytest.mark.covers("VCA_Profile")
+def test_the_profile_asked_for(device, material, artifacts, profile, shown):
+    """VCA_Profile: the stream is of the profile asked for."""
+    r, h264 = encode(device, material, artifacts, f"BITRATE 4000000 PROFILE {profile}", f"profile-{profile}.h264")
+    assert stream_fields(h264)["profile"] == shown, stream_fields(h264)
+
+
+@pytest.mark.covers("VCA_Level")
+def test_the_level_asked_for(device, material, artifacts):
+    """VCA_Level: the stream says level 4.2 when asked for it; a level H.264 does not have is refused at the open."""
+    r, h264 = encode(device, material, artifacts, "BITRATE 4000000 LEVEL 42", "level.h264")
+    assert stream_fields(h264)["level"] == "42", stream_fields(h264)
+    clip = derived(device, material, "clip.i420")
+    refused = vctest(device, f"ENCODE {clip} WIDTH 1920 HEIGHT 1080 LEVEL 99 OUT RAM:hw/level99.h264", 60)
+    device.delete("RAM:hw/level99.h264")
+    assert refused.kv.get("encode.session") == "refused" and refused.num("error") == VCERR_BADPARAM, refused.kv
+
+
+@pytest.mark.covers("VCA_RateControl")
+def test_a_variable_rate(device, material, artifacts, record_property):
+    """VCA_RateControl VBR: every picture in the stream, at most half again the 4000 kbit/s asked for (a variable rate
+    spends less on an easy picture)."""
+    r, h264 = encode(device, material, artifacts, "BITRATE 4000000 RATE VBR", "rate-vbr.h264")
+    frames, _ = key_frames(h264)
+    record_property("kbit/s", r.num("encode.kbit"))
+    assert frames == 30, f"{frames} pictures"
+    assert r.num("encode.kbit") <= 6000, f"{r.num('encode.kbit')} kbit/s for 4000 asked"
+
+
+@pytest.mark.covers("VCA_RateControl")
+def test_a_constant_rate_refused(device, material):
+    """VCA_RateControl CBR: refused at the open with VCERR_UNSUPPORTED, since the firmware's encoder will not start
+    with it (docs/firmware-facts.md); nothing is left open."""
+    clip = derived(device, material, "clip.i420")
+    r = vctest(device, f"ENCODE {clip} WIDTH 1920 HEIGHT 1080 BITRATE 4000000 RATE CBR OUT RAM:hw/rate-cbr.h264", 60)
+    device.delete("RAM:hw/rate-cbr.h264")
+    assert r.kv.get("encode.session") == "refused" and r.num("error") == VCERR_UNSUPPORTED, r.kv
+
+
+@pytest.mark.covers("VCA_ColorSpace")
+def test_the_color_space_written(device, material, artifacts):
+    """VCA_ColorSpace BT709 with I420 in: the stream tells its players BT.709 in limited range."""
+    r, h264 = encode(device, material, artifacts, "BITRATE 4000000 COLORSPACE BT709", "bt709.h264")
+    fields = stream_fields(h264)
+    assert fields["color_space"] == "bt709" and fields["color_range"] == "tv", fields
 
 
 @pytest.mark.smoke

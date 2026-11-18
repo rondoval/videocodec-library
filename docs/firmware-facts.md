@@ -94,6 +94,12 @@ be done. Add a fact here when a measurement finds one.
 * **ISP output formats.** RGB565, RGB24, BGR24, BGRA32, RGBA32, YUV420; never
   ARGB, so a 32-bit Picasso96 mode must be B8G8R8A8 or R8G8B8A8. Output alpha is
   always 255. The ISP does not dither: RGB565 bands on gradients.
+* **The ISP's place for a picture.** The ISP writes a picture at its buffer's
+  first pixel, in the size the output format's crop names: the crop's x and y
+  move nothing (seen on the Pi 4 with frames of the backend's own and with a
+  screen's bitmap). So the backend gives the ISP, of each frame, the part from
+  the picture's first pixel on (`shape_view_set()`); what the ISP leaves alone
+  beside the picture it leaves alone there too.
 * **ISP rows.** Whole groups of 32 pixels, heights even; I420 rows, in and out,
   whole 64 (its half-width chroma rows whole 32): it reads a 4000-pixel row as
   4032. The converter's own I420 input has such rows. The image decoder writes
@@ -102,14 +108,35 @@ be done. Add a fact here when a measurement finds one.
 * **RGB to YUV in the ISP.** Always BT.601 full range: `color_space` on the
   input port, the output port or both changes nothing (the bars of
   `tests/test_vcgrab.py`).
-* **YUV to RGB in the ISP.** YUYV and NV12 input work, and are read as BT.601
-  full range, whatever `color_space` the input port has: none, BT601, BT709
-  and JPEG_JFIF give byte-identical pictures (firmware of 14 May 2025, CM4). A
-  camera's video-range picture therefore keeps its blacks at 16 and whites at
-  235. `MMAL_PARAMETER_CUSTOM_CCM` (camera group + 0x58) is taken on the input
-  port, but any enabled matrix, the identity included, turns YUV input into one
-  flat colour (255, 121, 255); disabled, the picture is as without it. So
-  there is no way to expand the range on the VPU.
+* **YUV to RGB in the ISP.** Its one conversion is BT.601 full range,
+  whatever `color_space` its ports have: none, BT601, BT709, JPEG_JFIF and
+  JFIF_Y16_255, on the input, the output or both, are all taken, read back,
+  and give byte-identical pictures (firmware of 14 May 2025, CM4). The same
+  holds behind the decoder in a tunnel, though the decoder does report the
+  stream's space on its format change: `Y709`, `Y601`, and `YJFI` for any
+  full-range stream, BT.709 ones included. Left to itself a video-range
+  picture therefore keeps its blacks at 16 and its whites at 235, and a
+  BT.709 one shows its reds and greens a little off.
+* **The ISP's colours: the custom matrix.** `MMAL_PARAMETER_CUSTOM_CCM`
+  (camera group + 0x58) on the ISP's input port: an enable word, nine
+  rationals row by row, three offsets, 22 words. Read back, each term is
+  `num x 65536 / den` over 65536. With YUV in, an enabled matrix is applied
+  to the samples themselves, before the fixed conversion:
+  `(Y', Cb', Cr') = 8 x M x (Y, Cb, Cr) + offsets / 32`, in steps of 255, and
+  that triple then goes through the BT.601 full-range conversion. The factor
+  of 8 is why an identity matrix gives one flat colour (255, 121, 255): it
+  overdrives every sample; the zero matrix gives (0, 134, 0), which is YCbCr
+  (0, 0, 0). So the matrix that turns a picture's YCbCr into the full-range
+  BT.601 YCbCr of the same colour makes its RGB right, range and matrix both:
+  with it the bars of `tests/test_colour.py` come out within 3 of 255 for
+  BT.709 and BT.601 in limited range and BT.709 in full range, from the
+  decoder's tunnel and from host-fed frames alike. The parameter is refused
+  (EINVAL) on the output and the control port. `MMAL_PARAMETER_GAMMA`
+  (+ 0x5F, an enable word and two curves of 33 16-bit points) also works on
+  this path, on any of the three ports, and can stretch 16 to 235 per
+  channel; it cannot change the matrix and is not used. A black level
+  (+ 0x53) is taken and changes nothing. Not measured: what the matrix costs
+  in pictures a second.
 * **NV12 input rows.** The ISP takes NV12 at its own height, the UV rows right
   after the picture's last (1920x1080 packed, 3110400 bytes), no 16-row padding
   needed.
@@ -118,8 +145,8 @@ be done. Add a fact here when a measurement finds one.
   `MMAL_ES_FORMAT_FLAG_COL_FMTS_WIDTH_IS_COL_STRIDE` is refused (EINVAL). It
   implies the layout from the rows: luma rows aligned to 16, the chroma rows
   after them in each column (`buffer_size_min` 3133440 for 1920x1080: 15
-  columns of 1632 lines). Read as full-range BT.601 like every other YUV input;
-  195 pictures/s to BGRA32 at 1080p. The 10-bit column format (`Y10C`) is not
+  columns of 1632 lines). Read as full-range BT.601 like every other YUV input
+  unless the custom matrix says otherwise; 195 pictures/s to BGRA32 at 1080p. The 10-bit column format (`Y10C`) is not
   among the input's encodings (below); the HVS and `ril.video_render` take it.
 * **What the ISP lists.** Its input takes 64 encodings (CM4, firmware of 14
   May 2025): the Bayer orders at 8, 10, 12, 14 and 16 bits, packed and not,
@@ -168,6 +195,12 @@ be done. Add a fact here when a measurement finds one.
   the 25 asked for over 15. Packets have a minimum of 64 KB at 1080p. A key frame of
   noise is 0.8 to 1.3 MB and comes in pieces: all of one Pts and key flag, the
   first with the configuration flag, only the last with the frame end.
+* **No constant bit rate.** With `MMAL_PARAMETER_RATECONTROL` set to
+  `MMAL_VIDEO_RATECONTROL_CONSTANT` on the output port the parameter is taken,
+  but the input port's enable then fails with EINVAL, whether the rate control
+  goes before the bit rate or after it (`tests/test_encoder.py`, 1080p at 4
+  Mbit/s). `VARIABLE` works, and comes in under the bit rate asked for on an easy
+  picture (1.9 Mbit/s of 4 over the 30 pictures of `clip.i420`).
 * **The ISP's 32-bit input.** It reads an RGBA input as BGRA and the reverse; its
   output is right.
 
@@ -205,7 +238,11 @@ JPEG, PNG, GIF, BMP, TGA and PPM in any pieces, at least 2 buffers of 80 KiB.
   for the decoder's rows, a host with no memory left for the frame) left the
   firmware's MMAL dead, its memory held, until a Pi restart. A picture cut short
   would do the same: the decoder waits for the rest and is closed holding part of
-  it.
+  it. So would a caller's timeout: a 1 ms `VCA_Timeout` disabled the output port
+  of a 1080p JPEG decode under way, the VPU never answered that port action, and
+  every service went quiet, `SMEM` and gencmd too, a `C:Reboot` finding no
+  connection after (`tests/test_images.py`). A timed-out pass now lets its picture
+  end, for up to 5 s, before its session is closed.
 * **It gets wrong:** a PNG whose height is no multiple of 16 has its last
   `h mod 16` rows written `16 - h mod 16` rows too high (those rows lost); the
   transparent colour of a GIF or an RGB PNG comes out opaque (a palette PNG's

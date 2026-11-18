@@ -22,16 +22,37 @@
 
 static const UBYTE png_signature[8] = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 
+/**
+ * get_be32() - Read a big-endian 32-bit value.
+ *
+ * @d: the four bytes
+ *
+ * Return: the value.
+ */
 static ULONG get_be32(const UBYTE *d)
 {
 	return (get_be16(d) << 16) | get_be16(d + 2);
 }
 
+/**
+ * get_le16() - Read a little-endian 16-bit value.
+ *
+ * @d: the two bytes
+ *
+ * Return: the value.
+ */
 static ULONG get_le16(const UBYTE *d)
 {
 	return (ULONG)d[0] | ((ULONG)d[1] << 8);
 }
 
+/**
+ * get_le32() - Read a little-endian 32-bit value.
+ *
+ * @d: the four bytes
+ *
+ * Return: the value.
+ */
 static ULONG get_le32(const UBYTE *d)
 {
 	return get_le16(d) | (get_le16(d + 2) << 16);

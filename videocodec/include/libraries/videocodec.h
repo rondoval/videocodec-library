@@ -133,8 +133,9 @@
  *   // buffer back for the camera, VCIT_Frame the picture to draw
  *
  * NV12 goes as a camera sends it, the UV rows right after the picture's own.
- * The VideoCore backend reads YUV as full-range BT.601 (VCCS_JPEG), so a
- * camera's video-range picture (16 to 235) shows its blacks a little grey.
+ * VCA_ColorSpace says what the YUV pictures hold; without it they are read
+ * as full-range BT.601 (VCCS_JPEG), so a camera's video-range picture (16 to
+ * 235) shows its blacks a little grey unless the tag names VCCS_BT601.
  *
  *
  * The rules
@@ -154,7 +155,9 @@
  *   size and the scaler follows the change, with no event: with imported
  *   frames, give an output size.
  * - A VC_SetAttrsTags() that changes the output geometry replaces that side's
- *   objects: the old pointers are gone, import again if they were yours.
+ *   objects: the old pointers are gone, import again if they were yours.  To
+ *   go from frames you imported to the library's own, give VCA_OutputCount
+ *   with the change.
  *   Output tags left out keep their values; a new format or width without
  *   VCA_OutputPitch drops the pitch set before, and VCA_DestRect and
  *   VCA_KeepAspect replace each other.
@@ -309,11 +312,12 @@ typedef long long VCTime; /* a timestamp in microseconds */
 #define VCP_H264_Main 3
 #define VCP_H264_High 4
 
-/* What YUV pictures hold (VCA_ColorSpace) */
+/* What YUV pictures hold (VCA_ColorSpace, VCStreamInfo.ColorSpace) */
 #define VCCS_Unknown 0
-#define VCCS_BT601 1 /* limited range, 16 to 235 */
-#define VCCS_BT709 2 /* limited range, 16 to 235 */
-#define VCCS_JPEG 3  /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
+#define VCCS_BT601 1      /* limited range, 16 to 235 */
+#define VCCS_BT709 2      /* limited range, 16 to 235 */
+#define VCCS_JPEG 3       /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
+#define VCCS_BT709_Full 4 /* BT.709, full range */
 
 /* Rate control (VCA_RateControl) */
 #define VCRC_Default 0
@@ -411,7 +415,7 @@ struct VCStreamInfo
 	struct VCRect Crop;          /* the visible picture inside it */
 	struct VCRational FrameRate; /* Num 0 when the stream does not say */
 	struct VCRational Par;       /* pixel aspect ratio */
-	ULONG ColorSpace;            /* 0 unknown, else the codec's own number */
+	ULONG ColorSpace;            /* VCCS_* of the pictures; a video stream that does not say gets the usual guess (BT.709 from 720 rows up, BT.601 below, limited range) */
 	ULONG Flags;                 /* VCFF_Interlaced, VCFF_TopFieldFirst */
 	ULONG Format;                /* VCF_* of the frames that follow */
 };
@@ -544,6 +548,17 @@ struct VCSession; /* opaque */
 #define VCA_OutputWidth (VCA_Base + 8)  /* pixels [the source's] */
 #define VCA_OutputHeight (VCA_Base + 9) /* rows [the source's] */
 #define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel] */
+/*
+ * VCA_DestRect: where the picture goes in the frame, and how large.  A place
+ * other than the frame's top left needs a packed pixel format (the planes of
+ * I420 cannot start at one place: VCERR_UNSUPPORTED) and a first pixel on a
+ * whole long word of the frame.  Only the rectangle is written where the
+ * codec works in the frame's memory itself: the library's own frames and
+ * video memory.  A frame of yours in other memory may be filled by copy, and
+ * then loses what it held from the rectangle's first pixel to its end.  A
+ * rectangle that stands in from a row's start and reaches the frame's last
+ * row is taken only in memory the codec works in itself (VCERR_BADPARAM).
+ */
 #define VCA_DestRect (VCA_Base + 11)    /* struct VCRect *: where the picture goes in the frame [all of it] */
 #define VCA_KeepAspect (VCA_Base + 13)  /* BOOL: fit the picture as shown (pixel aspect) in the frame, centred [FALSE: stretch] */
 
@@ -559,7 +574,7 @@ struct VCSession; /* opaque */
  */
 #define VCA_InputCount (VCA_Base + 14)  /* number of input buffers [backend's] */
 #define VCA_InputSize (VCA_Base + 15)   /* bytes per input packet: the most one Read() may put in [backend's] */
-#define VCA_OutputCount (VCA_Base + 16) /* number of output buffers [backend's] */
+#define VCA_OutputCount (VCA_Base + 16) /* number of output buffers [backend's]; with a VC_SetAttrsTags() geometry change: the library's own frames again, after imported ones */
 #define VCA_OutputSize (VCA_Base + 17)  /* bytes per output packet; a picture that does not fit spans several [backend's] */
 
 /* Decoder */
@@ -571,19 +586,19 @@ struct VCSession; /* opaque */
 #define VCA_FrameRateNum (VCA_Base + 21)    /* frame rate of the input; a framed decoder assumes it too [unknown] */
 #define VCA_FrameRateDen (VCA_Base + 22)    /* 30000/1001 = 29.97 fps */
 #define VCA_Bitrate (VCA_Base + 23)         /* bits per second [backend's] */
-#define VCA_RateControl (VCA_Base + 27)     /* VCRC_* [backend's] */
+#define VCA_RateControl (VCA_Base + 27)     /* VCRC_* [backend's]; videocore.codec refuses VCRC_CBR (VCERR_UNSUPPORTED) */
 #define VCA_KeyInterval (VCA_Base + 26)     /* pictures from one key frame to the next [backend's] */
 #define VCA_Profile (VCA_Base + 24)         /* VCP_* [backend's] */
 #define VCA_Level (VCA_Base + 25)           /* H.264 level times ten: 31, 40, 41, 42 [backend's] */
 #define VCA_Quality (VCA_Base + 28)         /* JPEG: 1 to 100 [backend's] */
 #define VCA_RequestKeyFrame (VCA_Base + 33) /* BOOL, VC_SetAttrsTags() only: make the next picture a key frame */
-#define VCA_ColorSpace (VCA_Base + 39)      /* VCCS_*: what the input pictures hold, written into the stream for its players [unknown: they guess] */
+#define VCA_ColorSpace (VCA_Base + 39)      /* VCCS_*: an encoder: what the input pictures hold, written into the stream for its players [unknown: they guess]; a converter: what its YUV input holds [VCCS_JPEG]; a decoder: what the stream holds, whatever it says [the stream's]. RGB output is made from it */
 
 /* Image calls: VC_DecodeImageTags(), VC_EncodeImageTags(), VC_ConvertImageTags() */
 #define VCA_Data (VCA_Base + 34)     /* the source: compressed bytes, or a picture */
 #define VCA_Length (VCA_Base + 35)   /* bytes at VCA_Data, when compressed */
 #define VCA_Dest (VCA_Base + 36)     /* the destination: a picture, or room for compressed bytes */
 #define VCA_DestSize (VCA_Base + 37) /* bytes at VCA_Dest, when compressed */
-#define VCA_Timeout (VCA_Base + 38)  /* milliseconds each pass may wait [the backend's: 5000 for videocore.codec] */
+#define VCA_Timeout (VCA_Base + 38)  /* milliseconds each pass may wait [the backend's: 5000 for videocore.codec]; the picture on the hardware may still end before VCERR_TIMEOUT comes */
 
 #endif /* LIBRARIES_VIDEOCODEC_H */

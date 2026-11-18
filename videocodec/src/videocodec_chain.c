@@ -196,6 +196,7 @@ struct vc_chain *chain_open(struct VideoCodecBase *base, struct VCSessionParams 
 	    .KeepAspect = params->KeepAspect,
 	    .OutputCount = params->OutputCount,
 	    .OutputSize = params->OutputSize,
+	    .ColorSpace = params->ColorSpace, /* the client's word on the stream's colours, if it gave one */
 	};
 	/* the decoder: its native output at the stream's size, its own frames */
 	params->OutputFormat = 0;
@@ -427,6 +428,8 @@ static LONG converter_open(struct VCSession *session)
 	params.InputPitch = 0; /* the backend's for the format and size: the decoder lays its frames out so */
 	params.SourceRect = chain->shape.Crop;
 	params.HaveSourceRect = 1;
+	if (params.ColorSpace == VCCS_Unknown)
+		params.ColorSpace = chain->shape.ColorSpace; /* the stream's, as its decoder read it */
 
 	LONG err = 0;
 	chain->converter = VCB_OpenSession(&params, &err);
@@ -514,7 +517,8 @@ static void event_item(struct VCItem *item, ULONG event, LONG status)
  * The frames are of the client's format and size (the visible picture's
  * when it gave none); the visible picture is its destination rectangle,
  * else the whole frame, of square pixels.  The rate and the interlacing
- * are the stream's.
+ * are the stream's; the colour space is the client's word, else the stream's,
+ * as the converter was told.
  */
 static void info_item(const struct vc_chain *chain, struct VCItem *item)
 {
@@ -535,6 +539,7 @@ static void info_item(const struct vc_chain *chain, struct VCItem *item)
 	info->Par.Num = 1;
 	info->Par.Den = 1;
 	info->Flags = chain->shape.Flags;
+	info->ColorSpace = out->ColorSpace != VCCS_Unknown ? out->ColorSpace : chain->shape.ColorSpace;
 }
 
 /**

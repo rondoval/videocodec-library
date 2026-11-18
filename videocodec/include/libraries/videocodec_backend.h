@@ -138,9 +138,37 @@ struct VCSessionParams
 	ULONG RequestKeyFrame;               /* an encoder, VCB_SetAttrs() only: make the next picture a key frame */
 	ULONG ExtradataSize;                 /* bytes at Extradata */
 	CONST_APTR Extradata;                /* a decoder: the codec configuration (H.264 SPS/PPS); valid in VCB_OpenSession() only */
-	ULONG ColorSpace;                    /* an encoder: VCCS_* of its input pictures */
+	ULONG ColorSpace;                    /* VCCS_*: an encoder's or a converter's input pictures; a decoder: in place of the stream's */
 	ULONG CodecTag;                      /* VCA_CodecTag: the container's FourCC for the codec, 0 none (ABI 1.1) */
 };
+
+/* The matrix_coefficients of H.264 and H.265 (Table E-5 of both) whose matrix a VCCS_* names */
+#define VC_MATRIX_BT709 1
+#define VC_MATRIX_UNSPECIFIED 2 /* also what a stream without the field means */
+#define VC_MATRIX_BT470BG 5     /* BT.601's, 625 lines */
+#define VC_MATRIX_SMPTE170M 6   /* BT.601's, 525 lines */
+
+#define VC_HD_ROWS 720 /* from this many rows up a picture that names no matrix is taken as BT.709 */
+
+/**
+ * VC_ColorSpaceOf() - The VCCS_* of a video stream, from its video signal description.
+ * @matrix:     matrix_coefficients, VC_MATRIX_UNSPECIFIED for a stream without it
+ * @full_range: its full-range flag, FALSE for a stream without it
+ * @rows:       the picture's rows
+ *
+ * A matrix this API has no name for is guessed like a missing one: BT.709
+ * from VC_HD_ROWS rows up, BT.601 below, as players do.
+ *
+ * Return: VCCS_*, never VCCS_Unknown.
+ */
+static inline ULONG VC_ColorSpaceOf(ULONG matrix, BOOL full_range, ULONG rows)
+{
+	BOOL bt601 = matrix == VC_MATRIX_BT470BG || matrix == VC_MATRIX_SMPTE170M;
+	BOOL bt709 = matrix == VC_MATRIX_BT709 || (!bt601 && rows >= VC_HD_ROWS);
+	if (full_range)
+		return bt709 ? VCCS_BT709_Full : VCCS_JPEG;
+	return bt709 ? VCCS_BT709 : VCCS_BT601;
+}
 
 /*
  * An image call (VCB_Image()): one picture, blocking, in the caller's task.

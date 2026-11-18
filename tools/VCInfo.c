@@ -981,6 +981,13 @@ enum
 	ARG_COUNT
 };
 
+/**
+ * main() - Entry point: with no argument the summary, else one of CODECS, GCMD, COMPONENTS, COUNTERS or DUMP.
+ *
+ * More than one of them is refused.
+ *
+ * Return: RETURN_OK for a pass, RETURN_FAIL or RETURN_ERROR otherwise.
+ */
 int main(void)
 {
 	LONG args[ARG_COUNT] = {0};

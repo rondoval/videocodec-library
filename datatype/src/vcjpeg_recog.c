@@ -44,13 +44,14 @@ static BOOL find_frame(struct Library *DOSBase, BPTR file, UBYTE *sof);
 static BOOL frame_is_ours(const UBYTE *sof, ULONG min_pixels);
 static BOOL class_lets(struct ExecBase *SysBase, ULONG *min_pixels);
 
+LONG __attribute__((used, section(".text.entry"))) vcjpeg_recognise(struct DTHookContext *dthc asm("a0"));
 /**
  * vcjpeg_recognise() - Whether a file goes to vcjpeg.datatype.
+ *
  * @dthc: datatypes.library's context: the file's first bytes, its handle and lock
  *
  * Return: TRUE for a JPEG the VPU should decode, FALSE for anything else.
  */
-LONG __attribute__((used, section(".text.entry"))) vcjpeg_recognise(struct DTHookContext *dthc asm("a0"));
 LONG __attribute__((used, section(".text.entry"))) vcjpeg_recognise(struct DTHookContext *dthc asm("a0"))
 {
 	const UBYTE *head = (const UBYTE *)dthc->dthc_Buffer;

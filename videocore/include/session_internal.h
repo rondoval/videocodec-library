@@ -98,6 +98,7 @@ struct vc_object
 		struct VCPacket packet;
 	} pub;                     /* first: the client's pointer is the object's */
 	struct mmal_buffer buffer; /* the MMAL buffer header over the memory (buffer.data): attached while its side runs */
+	APTR memory;               /* the memory's first byte: the client's, or the backend's as the pool gave it */
 	u32 capacity;              /* the memory's bytes */
 	BOOL is_frame;             /* a picture, else a packet */
 	BOOL owned;                /* the backend's memory */
@@ -124,6 +125,15 @@ struct vc_shape
 	ULONG format;                /* VCF_* */
 	struct VCRect dest;          /* the picture's place in the frame */
 	struct vc_geometry geometry; /* the frame's layout */
+	/*
+	 * The ISP writes a picture at its buffer's first pixel, whatever the
+	 * format's crop says of a place.  So of a frame it is given the view:
+	 * from the picture's first pixel on, rows as long as the frame's.  The
+	 * view is the frame where the picture stands at the frame's start.
+	 */
+	struct vc_geometry view; /* the view's layout */
+	u32 view_start;          /* bytes from a frame's first to the view's first */
+	u32 view_tail;           /* bytes the view reaches past the frame's last: nothing is written there */
 };
 
 struct vc_session;
@@ -191,6 +201,7 @@ struct vc_session
 	struct vc_object *token; /* the output object that catches the stream's shape, until it is known */
 	struct vc_object *config; /* the decoder's codec configuration (VCA_Extradata), sent first; never the client's */
 	struct VCRational sps_par; /* the pixel aspect the H.264 SPS gives (the decoder reports 1/1); 0/0 for none */
+	ULONG sps_space;         /* VCCS_* the H.264 SPS gives (the decoder reports no matrix for full range); VCCS_Unknown for none */
 	BOOL memory_checked;     /* the codec heap was read for a decoder that gives no picture size */
 	BOOL sps_checked;        /* the stream's SPS was held against the codec heap (decoder_heap_check()) */
 	u32 blind_bytes;         /* decoder input sent before the picture size came */
@@ -258,6 +269,8 @@ BOOL format_is_planar(ULONG format);
 #define COLUMN_BYTES 128u /* a column format's column: bytes per row of it */
 #define COLUMN10_SAMPLES 96u /* the 10-bit column format's samples per 128-byte column row: three in 32 bits */
 BOOL format_is_column(ULONG format);
+/* Whether a VCF_* format holds luma and chroma, whatever its layout */
+BOOL format_is_yuv(ULONG format);
 /* Bytes per pixel of a VCF_* format's first plane, 1 for a planar one; 0 for an unknown format */
 u32 format_bytes_per_pixel(ULONG format);
 /* The MMAL encoding of a VCF_* pixel format; 0 for none */
@@ -324,6 +337,9 @@ void set_shape_frames(struct vc_set *set, const struct vc_geometry *geometry, UL
 u32 output_set_count(const struct vc_session *session, u32 fallback);
 /* The output frames for session->shape: imported ones must hold @size, the backend's are made again */
 LONG output_set_prepare(struct vc_session *session, u32 count, u32 size);
+BOOL view_fits(struct vc_session *session, APTR data, u32 capacity, u32 size);
+void view_place(struct vc_object *object, const struct vc_shape *shape);
+void shape_view_whole(struct vc_shape *shape);
 /* Describe a filled output frame as a poll item */
 void output_item_frame(struct vc_object *object, struct VCItem *item);
 /* Describe a filled output packet as a poll item */

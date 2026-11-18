@@ -94,6 +94,15 @@ struct player
 
 /* ---- the clock ---------------------------------------------------------------- */
 
+/**
+ * timer_open() - Open timer.device for the pacing ticks.
+ *
+ * @p: the player
+ *
+ * The ticks are timer requests sent with SendIO(); the tick period is armed with timer_arm().
+ *
+ * Return: TRUE, FALSE when the port, the request or the device could not be had.
+ */
 static BOOL timer_open(struct player *p)
 {
 	p->timer_port = CreateMsgPort();
@@ -104,6 +113,11 @@ static BOOL timer_open(struct player *p)
 	return p->timer_ok;
 }
 
+/**
+ * timer_close() - Close the timer device and free what timer_open() made, as far as it got.
+ *
+ * @p: the player
+ */
 static void timer_close(struct player *p)
 {
 	if (p->timer_ok)
@@ -114,6 +128,12 @@ static void timer_close(struct player *p)
 		DeleteMsgPort(p->timer_port);
 }
 
+/**
+ * timer_arm() - Start one tick: the timer request comes back to its port after @us microseconds.
+ *
+ * @p:  the player
+ * @us: the delay
+ */
 static void timer_arm(struct player *p, ULONG us)
 {
 	p->timer->tr_node.io_Command = TR_ADDREQUEST;
@@ -122,7 +142,11 @@ static void timer_arm(struct player *p, ULONG us)
 	SendIO((struct IORequest *)p->timer);
 }
 
-/* The tick in flight, stopped and collected. */
+/**
+ * timer_cancel() - The tick in flight, stopped and collected.
+ *
+ * @p: the player
+ */
 static void timer_cancel(struct player *p)
 {
 	if (CheckIO((struct IORequest *)p->timer) == NULL)
@@ -132,7 +156,15 @@ static void timer_cancel(struct player *p)
 
 /* ---- the stream ----------------------------------------------------------------- */
 
-/* A packet back from the session takes the next piece of the file, or the end mark once. */
+/**
+ * packet_fill() - A packet back from the session takes the next piece of the file, or the end mark once.
+ *
+ * @p:  the player
+ * @pk: the packet the session handed back
+ *
+ * The packet's Length and Flags are set and it goes back with VC_SendPacket(); an empty read sends the end-of-stream
+ * flag.  A failed read or send sets p->failed.
+ */
 static void packet_fill(struct player *p, struct VCPacket *pk)
 {
 	if (p->eof_sent)
@@ -156,7 +188,13 @@ static void packet_fill(struct player *p, struct VCPacket *pk)
 	}
 }
 
-/* The codec of a file, by the end of its name in any case. */
+/**
+ * codec_of_file() - The codec of a file, by the end of its name in any case.
+ *
+ * @name: the file name
+ *
+ * Return: the matching codecs[] row, H.264 for any other name.
+ */
 static const struct stream_codec *codec_of_file(const char *name)
 {
 	size_t length = strlen(name);
@@ -171,16 +209,17 @@ static const struct stream_codec *codec_of_file(const char *name)
 
 /* ---- the window ------------------------------------------------------------------ */
 
-/*
- * One of formats[] that a mask holds, the best for the screen: the screen's
- * own format when the mask holds it, so that a frame reaches the window with
- * a plain copy; else the first of formats[] the mask holds, which
- * p96WritePixelArray() converts to the screen's as it copies.  The mask's
- * other formats (YUV, the H.265 decoder's columns) are never chosen:
- * Picasso96 cannot draw them.  NULL when the mask holds none of formats[].
+/**
+ * format_in() - One of formats[] that a mask holds, the best for the screen.
  *
- * mask:       VCF_MASK()s of the formats a session can write
- * screen_rgb: the Workbench screen's pixel format (RGBFB_*)
+ * @mask:       VCF_MASK()s of the formats a session can write
+ * @screen_rgb: the Workbench screen's pixel format (RGBFB_*)
+ *
+ * The screen's own format when the mask holds it, so that a frame reaches the window with a plain copy; else the first
+ * of formats[] the mask holds, which p96WritePixelArray() converts to the screen's as it copies.  The mask's other
+ * formats (YUV, the H.265 decoder's columns) are never chosen: Picasso96 cannot draw them.
+ *
+ * Return: the format, NULL when the mask holds none of formats[].
  */
 static const struct pixel_format *format_in(ULONG mask, RGBFTYPE screen_rgb)
 {
@@ -197,21 +236,23 @@ static const struct pixel_format *format_in(ULONG mask, RGBFTYPE screen_rgb)
 	return first;
 }
 
-/*
- * The pixel format to ask the session for, from the first decoder row of the
- * file's codec.  A session writes two sets of formats: the decoder's own
- * (OutputFormats), and those of a converter the library puts behind the
- * decoder when the session asks for one of them (ChainOutputFormats; 0 from
- * a library older than the field).  In this order:
+/**
+ * format_choose() - Choose the pixel format to ask the session for, from the first decoder row of the file's codec; it
+ *   goes to p->pf.
  *
- * 1. the screen's own format, from either set: a plain copy into the window;
- * 2. another format the decoder writes itself: one pass through the hardware,
- *    and Picasso96 converts it as it copies;
- * 3. another format the converter adds.
+ * @p: the player
  *
- * The H.264 decoder writes the RGB formats itself.  The H.265 decoder writes
- * only its own column format, so its frames always come through the
- * converter.
+ * A session writes two sets of formats: the decoder's own (OutputFormats), and those of a converter the library puts
+ * behind the decoder when the session asks for one of them (ChainOutputFormats; 0 from a library older than the field).
+ * In this order:
+ *
+ * 1. the screen's own format, from either set: a plain copy into the window; 2. another format the decoder writes
+ * itself: one pass through the hardware, and Picasso96 converts it as it copies; 3. another format the converter adds.
+ *
+ * The H.264 decoder writes the RGB formats itself.  The H.265 decoder writes only its own column format, so its frames
+ * always come through the converter.
+ *
+ * Return: TRUE, FALSE when no backend decodes the codec to a format Picasso96 knows.
  */
 static BOOL format_choose(struct player *p)
 {
@@ -243,11 +284,16 @@ static BOOL format_choose(struct player *p)
 	return FALSE;
 }
 
-/*
- * The decoder told the picture's size: a window of that size, or smaller
- * with the aspect kept when the screen is smaller, and the session's output
- * takes the window's inner size.  Rows are whole groups of 32 pixels, as the
- * backend asks.
+/**
+ * window_open() - The decoder told the picture's size: open a window of that size, or smaller with the aspect kept when
+ *   the screen is smaller, and set the session's output to the window's inner size.
+ *
+ * @p:  the player
+ * @si: the stream's description from the first StreamInfo event
+ *
+ * Rows are whole groups of 32 pixels, as the backend asks.  The stream's frame rate, when it gives one, sets the tick.
+ *
+ * Return: TRUE, FALSE when no window opened or the session refused the size.
  */
 static BOOL window_open(struct player *p, const struct VCStreamInfo *si)
 {
@@ -289,7 +335,13 @@ static BOOL window_open(struct player *p, const struct VCStreamInfo *si)
 	return TRUE;
 }
 
-/* A frame into the window: Picasso96 copies it, clipped by the layers; then back to the session to be filled again. */
+/**
+ * frame_show() - A frame into the window: Picasso96 copies it, clipped by the layers; then back to the session to be
+ *   filled again.
+ *
+ * @p: the player
+ * @f: a full frame from the session
+ */
 static void frame_show(struct player *p, struct VCFrame *f)
 {
 	struct RenderInfo ri;
@@ -303,6 +355,11 @@ static void frame_show(struct player *p, struct VCFrame *f)
 	p->shown++;
 }
 
+/**
+ * window_check() - Take the window's messages: the close gadget ends the play.
+ *
+ * @p: the player
+ */
 static void window_check(struct player *p)
 {
 	struct IntuiMessage *im;
@@ -317,6 +374,13 @@ static void window_check(struct player *p)
 
 /* ---- the loop ----------------------------------------------------------------------- */
 
+/**
+ * event() - Act on a session event: the first StreamInfo opens the window, the end of the stream and an error stop the
+ *   play.
+ *
+ * @p:  the player
+ * @ev: the event from VC_Poll()
+ */
 static void event(struct player *p, const struct VCEvent *ev)
 {
 	switch (ev->Event)
@@ -338,7 +402,12 @@ static void event(struct player *p, const struct VCEvent *ev)
 	}
 }
 
-/* Sleep until one of @mask, the next tick, the window or Ctrl-C calls. */
+/**
+ * sleep_until() - Sleep until one of @mask, the next tick, the window or Ctrl-C calls.
+ *
+ * @p:    the player
+ * @mask: signals to wake for, besides the timer, the window and Ctrl-C
+ */
 static void sleep_until(struct player *p, ULONG mask)
 {
 	mask |= (1UL << p->timer_port->mp_SigBit) | SIGBREAKF_CTRL_C;
@@ -349,11 +418,14 @@ static void sleep_until(struct player *p, ULONG mask)
 	window_check(p);
 }
 
-/*
- * A timer ticks once a frame; each tick shows the frame waiting, if one is.
- * One item per pass, Ctrl-C looked at every time: a decoder that hands its
- * input straight back cannot keep us from it.  While a frame waits nothing
- * more is taken; what the session has ready keeps.
+/**
+ * play() - The frame loop: a timer ticks once a frame, each tick shows the frame waiting, if one is.
+ *
+ * @p: the player
+ *
+ * Each pass takes one item from VC_Poll(): a returned packet is refilled, a frame is kept for the next tick, an event
+ * is acted on.  One item per pass, Ctrl-C looked at every time: a decoder that hands its input straight back cannot
+ * keep us from it.  While a frame waits nothing more is taken; what the session has ready keeps.
  */
 static void play(struct player *p)
 {
@@ -386,6 +458,15 @@ static void play(struct player *p)
 
 /* ---- main ---------------------------------------------------------------------------- */
 
+/**
+ * main() - Entry point: open the libraries, the file and a decoder session, and play.
+ *
+ * The session is opened for the codec and pixel format chosen, its output size set when the stream's is known.  The
+ * session is closed before the window, since the frames are the session's.
+ *
+ * Return: RETURN_OK, RETURN_FAIL when the play failed, RETURN_ERROR when a library, the file or the session did not
+ *   open.
+ */
 int main(void)
 {
 	LONG args[1] = {0};

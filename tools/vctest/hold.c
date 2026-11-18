@@ -16,7 +16,7 @@
 #include <exec/memory.h>
 
 #include <args.h>
-#include <kv.h>
+#include <emu68test/kv.h>
 
 #include "commands.h"
 
@@ -39,14 +39,27 @@ struct held
 	ULONG size;
 };
 
-/* Whether a memory header is Fast RAM the VPU reaches. */
+/**
+ * in_reach() - Whether a memory header is Fast RAM the VPU reaches.
+ *
+ * @header: the memory header
+ *
+ * Return: TRUE when it ends in the lowest GiB and above Chip RAM.
+ */
 static BOOL in_reach(const struct MemHeader *header)
 {
 	ULONG upper = (ULONG)header->mh_Upper;
 	return upper <= REACH_END && upper > CHIP_END;
 }
 
-/* A header's largest free chunk but @kept; NULL for none. */
+/**
+ * chunk_largest() - A header's largest free chunk but @kept; NULL for none.
+ *
+ * @header: the memory header
+ * @kept:   a chunk to skip
+ *
+ * Return: the chunk, NULL when there is none.
+ */
 static struct MemChunk *chunk_largest(const struct MemHeader *header, const struct MemChunk *kept)
 {
 	struct MemChunk *best = NULL;

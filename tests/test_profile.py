@@ -6,7 +6,7 @@ full screen at 16 bits.  Each slot's average and the run's rate go to the baseli
 """
 import pytest
 
-from harness.perf import slots
+from emu68test.perf import totals
 
 pytestmark = pytest.mark.profile
 
@@ -27,13 +27,13 @@ def test_timing(device, material, debuglog, baselines, record_property, case):
     mark = debuglog.mark()
     r = device.run(rig, args.format(clip=material.ram("clip42.h264")), 120)
     assert r.passed, r.kv.get("fail")
-    baselines.check(f"profile.{case}.fps", r.num(rate_key), higher=True, tolerance="10%")
+    baselines.check_near(f"profile.{case}.fps", r.num(rate_key), higher=True, tolerance="10%")
     text = debuglog.since(mark).text
-    found = {prefix: slots(text, prefix) for prefix in ("videocore", "vchiq")}
+    found = {prefix: totals(text, prefix) for prefix in ("videocore", "vchiq")}
     assert any(found.values()), "no perf lines in the log: not a profile build, or the wrong adapter"
     for prefix, table in found.items():
         for name, slot in sorted(table.items()):
-            if slot.n == 0:
+            if slot.calls == 0:
                 continue
-            record_property(f"{prefix}.{name}", f"n={slot.n} avg={slot.avg_us:.1f}us max={slot.max_us}us")
-            baselines.check(f"profile.{case}.{prefix}.{name}.avg_us", round(slot.avg_us, 1), higher=False, tolerance="25%")
+            record_property(f"{prefix}.{name}", f"n={slot.calls} avg={slot.avg_us:.1f}us max={slot.max_us}us")
+            baselines.check_near(f"profile.{case}.{prefix}.{name}.avg_us", round(slot.avg_us, 1), higher=False, tolerance="25%")

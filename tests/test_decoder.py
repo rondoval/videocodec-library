@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from harness.material import ffmpeg
-from harness.pictures import psnr, y_planes
-from harness.tools import assert_nothing_left, vctest
+from vchiqtest.material import ffmpeg
+from vchiqtest.pictures import psnr, y_planes
+from vchiqtest.tools import assert_nothing_left, vctest
 
 CHAINED_LEAST_DB = 40.0  # the chain's luma against ffmpeg's: the converter only repacks it, a wrong picture scores 10 to 15
 
@@ -19,6 +19,9 @@ def decode(device, material, clip, extra="", ref=True, timeout=180):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VC_OpenSession", "VC_CloseSession", "VC_SendPacket", "VC_Poll", "VC_ReleaseFrame", "VCA_Codec",
+                    "VCA_Kind", "VCA_SigTask", "VCA_SigMask", "VCA_InputCount", "VCA_InputSize", "VCA_FrameRateNum",
+                    "VCA_FrameRateDen", "VCA_ErrorPtr", "NSCMD_VQ_BULKREAD")
 def test_bit_exact(device, material):
     """Three hundred frames of 1080p, every one the same as ffmpeg's."""
     r = decode(device, material, "clip42.h264")
@@ -28,6 +31,7 @@ def test_bit_exact(device, material):
 
 
 @pytest.mark.smoke
+@pytest.mark.covers("VCA_Framed")
 def test_bit_exact_framed(device, material):
     """One access unit per packet with timestamps (FRAMED): the same three hundred frames bit exact."""
     r = decode(device, material, "clip42.h264", "FRAMED")
@@ -35,6 +39,7 @@ def test_bit_exact_framed(device, material):
     assert r.num("ref.compared") == 300 and r.num("ref.mismatches") == 0
 
 
+@pytest.mark.covers("VCA_Extradata", "VCA_ExtradataSize")
 def test_extradata(device, material):
     """The SPS and PPS passed as VCA_Extradata instead of in the stream: the same three hundred frames bit exact."""
     r = decode(device, material, "clip42.h264", "FRAMED EXTRADATA")
@@ -51,6 +56,7 @@ def test_extradata_large(device, material):
     assert r.num("ref.compared") == 300 and r.num("ref.mismatches") == 0
 
 
+@pytest.mark.covers("VCA_Backend")
 def test_backend_named(device, material):
     """The backend asked for by name (VCA_Backend videocore): the same result, on the first 150 frames."""
     r = decode(device, material, "clip42.h264", "FRAMED FRAMES 150 BACKEND videocore")
@@ -58,6 +64,7 @@ def test_backend_named(device, material):
     assert r.num("ref.compared") == 150 and r.num("ref.mismatches") == 0
 
 
+@pytest.mark.covers("VCA_CodecTag")
 def test_codec_tag(device, material):
     """VCA_CodecTag avc1, the FourCC of an MP4's H.264: videocore.codec's rows serve every form, so the same frames."""
     r = decode(device, material, "clip42.h264", "FRAMED FRAMES 150 TAG avc1")
@@ -67,6 +74,7 @@ def test_codec_tag(device, material):
 
 
 @pytest.mark.parametrize("extra", [pytest.param("", id="native"), pytest.param("OUTFORMAT RGBA32", id="through-isp")])
+@pytest.mark.covers("VC_SetAttrs")
 def test_resignal(device, material, extra):
     """The session moved to another signal bit after thirty frames (VC_SetAttrsTags(VCA_SigMask)), VCTest waiting for that
     bit only from then on: every frame still comes, so each of the backend's components signals the new bit."""
@@ -87,7 +95,7 @@ def test_decoder_rate(device, material, baselines):
     """The decoder's own rate, no hashing: the baseline of the hardware."""
     r = decode(device, material, "clip42.h264", "FRAMES 300 NOHASH", ref=False, timeout=120)
     assert r.passed, r.kv.get("fail")
-    baselines.check("decoder_alone.decode.fps", r.num("decode.fps"), higher=True, tolerance="10%")
+    baselines.check_near("decoder_alone.decode.fps", r.num("decode.fps"), higher=True, tolerance="10%")
 
 
 def test_two_decodes_at_once(device, material):
@@ -109,6 +117,7 @@ def test_mjpeg_one_picture(device, material):
 
 
 @pytest.mark.parametrize("extra", [pytest.param("", id="native"), pytest.param("OUTFORMAT RGBA32", id="through-isp")])
+@pytest.mark.covers("VC_Flush")
 def test_flush_replays(device, material, extra):
     """VC_Flush() after a hundred frames, the clip again: no frame from before the flush comes after it."""
     r = decode(device, material, "clip42.h264", f"FRAMED NOHASH FLUSH 100 {extra}", ref=False, timeout=120)
@@ -117,6 +126,7 @@ def test_flush_replays(device, material, extra):
     assert r.num("flush.stale") == 0 and r.num("flush.untimed") == 0
 
 
+@pytest.mark.covers("VCA_OutputFormat")
 def test_chained_output(device, material, record_property):
     """YUYV, which the H.264 decoder does not write itself: the library puts the VideoCore's converter behind it (the
     chain, as VCCodecInfo.ChainOutputFormats lists it), and the first picture's luma is ffmpeg's."""
@@ -167,6 +177,25 @@ def test_pixel_aspect_reported(device, material, clip, par):
     r = vctest(device, f"DECODE {material.ram(clip)} NOHASH FRAMES 2", 60)
     assert r.passed, r.kv.get("fail")
     assert (r.num("stream.0.par_num"), r.num("stream.0.par_den")) == par
+
+
+@pytest.mark.covers("VC_ImportPacket")
+def test_imported_packets(device, material):
+    """Input packets of the program's own memory (VC_ImportPacket()), sent first: the same three hundred frames bit exact."""
+    r = decode(device, material, "clip42.h264", "IMPORT 4")
+    assert r.passed, r.kv.get("fail")
+    assert r.num("decode.imported_packets") == 4
+    assert r.num("ref.compared") == 300 and r.num("ref.mismatches") == 0
+
+
+@pytest.mark.covers("VC_ImportFrame")
+def test_imported_frames(device, material):
+    """Output frames of the program's own memory (VC_ImportFrame()), their shape from VCA_Width and VCA_Height before
+    the stream says it: the same three hundred frames bit exact."""
+    r = decode(device, material, "clip42.h264", "IMPORTFRAMES 4 WIDTH 1920 HEIGHT 1080")
+    assert r.passed, r.kv.get("fail")
+    assert r.num("decode.imported_frames") == 4
+    assert r.num("ref.compared") == 300 and r.num("ref.mismatches") == 0
 
 
 @pytest.mark.smoke

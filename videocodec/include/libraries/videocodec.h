@@ -155,7 +155,9 @@
  *   size and the scaler follows the change, with no event: with imported
  *   frames, give an output size.
  * - A VC_SetAttrsTags() that changes the output geometry replaces that side's
- *   objects: the old pointers are gone, import again if they were yours.
+ *   objects: the old pointers are gone, import again if they were yours.  To
+ *   go from frames you imported to the library's own, give VCA_OutputCount
+ *   with the change.
  *   Output tags left out keep their values; a new format or width without
  *   VCA_OutputPitch drops the pitch set before, and VCA_DestRect and
  *   VCA_KeepAspect replace each other.
@@ -561,7 +563,7 @@ struct VCSession; /* opaque */
  */
 #define VCA_InputCount (VCA_Base + 14)  /* number of input buffers [backend's] */
 #define VCA_InputSize (VCA_Base + 15)   /* bytes per input packet: the most one Read() may put in [backend's] */
-#define VCA_OutputCount (VCA_Base + 16) /* number of output buffers [backend's] */
+#define VCA_OutputCount (VCA_Base + 16) /* number of output buffers [backend's]; with a VC_SetAttrsTags() geometry change: the library's own frames again, after imported ones */
 #define VCA_OutputSize (VCA_Base + 17)  /* bytes per output packet; a picture that does not fit spans several [backend's] */
 
 /* Decoder */

@@ -449,21 +449,16 @@ static BOOL same_output_request(const struct VCSessionParams *first, const struc
 }
 
 /**
- * isp_set_geometry() - A new output geometry for the ISP.
- * @session: a session with the ISP
- * @changes: the output tags the client set
+ * geometry_merge() - Take the output tags a client set into a session's parameters.
+ * @params:  the session's parameters
+ * @changes: the output tags the client set; 0 for one it did not
  *
- * Nothing new: the frames stay.  Before the ISP's output runs the shape is
- * only resolved again (a size given now lets frames be imported already).
- * While it runs, the output is restarted at the next poll
- * (isp_output_restart()).
- *
- * Return: 0 or the error.
+ * A field given replaces the one kept.  A new format or width without a
+ * pitch drops the pitch kept; a destination rectangle and "keep the aspect"
+ * replace each other.
  */
-static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionParams *changes)
+static void geometry_merge(struct VCSessionParams *params, const struct VCSessionParams *changes)
 {
-	struct VCSessionParams *params = &session->params;
-	struct VCSessionParams before = *params;
 	if (changes->OutputFormat != 0)
 		params->OutputFormat = changes->OutputFormat;
 	if (changes->OutputWidth != 0)
@@ -485,13 +480,44 @@ static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionP
 		params->KeepAspect = 1;
 		params->HaveDestRect = 0;
 	}
+}
+
+/**
+ * isp_set_geometry() - A new output geometry for the ISP.
+ * @session: a session with the ISP
+ * @changes: the output tags the client set
+ *
+ * Nothing new: the frames stay.  Before the ISP's output runs the shape is
+ * only resolved again (a size given now lets frames be imported already).
+ * While it runs, the output is restarted at the next poll
+ * (isp_output_restart()).  A session whose output frames were imported
+ * waits for the client to import the new ones, unless the change comes with
+ * VCA_OutputCount: then the backend makes its own again.
+ *
+ * Return: 0 or the error.
+ */
+static LONG isp_set_geometry(struct vc_session *session, const struct VCSessionParams *changes)
+{
+	struct VCSessionParams *params = &session->params;
+	struct VCSessionParams before = *params;
+	geometry_merge(params, changes);
 
 	if (same_output_request(&before, params))
 		return 0;
 
 	session->shape.resolved = FALSE;
-	if (output_running(session))
-		return isp_output_restart(session);
+	BOOL own = changes->OutputCount != 0; /* VCA_OutputCount with the change: the backend's own frames again */
+	BOOL restarted = output_running(session);
+	LONG error = restarted ? isp_output_restart(session) : 0;
+	if (error != 0 || (restarted && !own))
+		return error;
+	if (own)
+	{
+		set_empty(session, &session->output_set); /* the client's imports, if it made some before the output ran */
+		session->output_set.imported = FALSE;
+		params->OutputCount = changes->OutputCount;
+		session->shape.resolved = FALSE;
+	}
 	if (session->have_stream || param_output_size_fixed(params))
 		return shape_resolve(session);
 	return 0;

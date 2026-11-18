@@ -35,7 +35,11 @@ struct tool
 	struct vq_service svc;
 	const char *backend; /* BACKEND: the backend every session and image call asks for, NULL for the library's choice */
 	BOOL misalign;       /* MISALIGN: pictures 4 bytes past a cache line, which the backend then sends by bulk */
+	ULONG color_space;   /* COLORSPACE: VCCS_* a decoder or converter session is told its pictures hold, VCCS_Unknown for nothing told */
 };
+
+/* VCA_ColorSpace when COLORSPACE was given, else nothing: two tag slots */
+#define COLOR_SPACE_TAG(t) ((t)->color_space != VCCS_Unknown ? VCA_ColorSpace : TAG_IGNORE), (t)->color_space
 
 /* VCA_Backend when BACKEND was given, else nothing: two tag slots */
 #define BACKEND_TAG(t) ((t)->backend != NULL ? VCA_Backend : TAG_IGNORE), (ULONG)(t)->backend

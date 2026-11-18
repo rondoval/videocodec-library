@@ -133,8 +133,9 @@
  *   // buffer back for the camera, VCIT_Frame the picture to draw
  *
  * NV12 goes as a camera sends it, the UV rows right after the picture's own.
- * The VideoCore backend reads YUV as full-range BT.601 (VCCS_JPEG), so a
- * camera's video-range picture (16 to 235) shows its blacks a little grey.
+ * VCA_ColorSpace says what the YUV pictures hold; without it they are read
+ * as full-range BT.601 (VCCS_JPEG), so a camera's video-range picture (16 to
+ * 235) shows its blacks a little grey unless the tag names VCCS_BT601.
  *
  *
  * The rules
@@ -309,11 +310,12 @@ typedef long long VCTime; /* a timestamp in microseconds */
 #define VCP_H264_Main 3
 #define VCP_H264_High 4
 
-/* What YUV pictures hold (VCA_ColorSpace) */
+/* What YUV pictures hold (VCA_ColorSpace, VCStreamInfo.ColorSpace) */
 #define VCCS_Unknown 0
-#define VCCS_BT601 1 /* limited range, 16 to 235 */
-#define VCCS_BT709 2 /* limited range, 16 to 235 */
-#define VCCS_JPEG 3  /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
+#define VCCS_BT601 1      /* limited range, 16 to 235 */
+#define VCCS_BT709 2      /* limited range, 16 to 235 */
+#define VCCS_JPEG 3       /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
+#define VCCS_BT709_Full 4 /* BT.709, full range */
 
 /* Rate control (VCA_RateControl) */
 #define VCRC_Default 0
@@ -411,7 +413,7 @@ struct VCStreamInfo
 	struct VCRect Crop;          /* the visible picture inside it */
 	struct VCRational FrameRate; /* Num 0 when the stream does not say */
 	struct VCRational Par;       /* pixel aspect ratio */
-	ULONG ColorSpace;            /* 0 unknown, else the codec's own number */
+	ULONG ColorSpace;            /* VCCS_* of the pictures; a video stream that does not say gets the usual guess (BT.709 from 720 rows up, BT.601 below, limited range) */
 	ULONG Flags;                 /* VCFF_Interlaced, VCFF_TopFieldFirst */
 	ULONG Format;                /* VCF_* of the frames that follow */
 };
@@ -577,7 +579,7 @@ struct VCSession; /* opaque */
 #define VCA_Level (VCA_Base + 25)           /* H.264 level times ten: 31, 40, 41, 42 [backend's] */
 #define VCA_Quality (VCA_Base + 28)         /* JPEG: 1 to 100 [backend's] */
 #define VCA_RequestKeyFrame (VCA_Base + 33) /* BOOL, VC_SetAttrsTags() only: make the next picture a key frame */
-#define VCA_ColorSpace (VCA_Base + 39)      /* VCCS_*: what the input pictures hold, written into the stream for its players [unknown: they guess] */
+#define VCA_ColorSpace (VCA_Base + 39)      /* VCCS_*: an encoder: what the input pictures hold, written into the stream for its players [unknown: they guess]; a converter: what its YUV input holds [VCCS_JPEG]; a decoder: what the stream holds, whatever it says [the stream's]. RGB output is made from it */
 
 /* Image calls: VC_DecodeImageTags(), VC_EncodeImageTags(), VC_ConvertImageTags() */
 #define VCA_Data (VCA_Base + 34)     /* the source: compressed bytes, or a picture */

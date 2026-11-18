@@ -191,6 +191,7 @@ struct vc_session
 	struct vc_object *token; /* the output object that catches the stream's shape, until it is known */
 	struct vc_object *config; /* the decoder's codec configuration (VCA_Extradata), sent first; never the client's */
 	struct VCRational sps_par; /* the pixel aspect the H.264 SPS gives (the decoder reports 1/1); 0/0 for none */
+	ULONG sps_space;         /* VCCS_* the H.264 SPS gives (the decoder reports no matrix for full range); VCCS_Unknown for none */
 	BOOL memory_checked;     /* the codec heap was read for a decoder that gives no picture size */
 	BOOL sps_checked;        /* the stream's SPS was held against the codec heap (decoder_heap_check()) */
 	u32 blind_bytes;         /* decoder input sent before the picture size came */
@@ -258,6 +259,8 @@ BOOL format_is_planar(ULONG format);
 #define COLUMN_BYTES 128u /* a column format's column: bytes per row of it */
 #define COLUMN10_SAMPLES 96u /* the 10-bit column format's samples per 128-byte column row: three in 32 bits */
 BOOL format_is_column(ULONG format);
+/* Whether a VCF_* format holds luma and chroma, whatever its layout */
+BOOL format_is_yuv(ULONG format);
 /* Bytes per pixel of a VCF_* format's first plane, 1 for a planar one; 0 for an unknown format */
 u32 format_bytes_per_pixel(ULONG format);
 /* The MMAL encoding of a VCF_* pixel format; 0 for none */

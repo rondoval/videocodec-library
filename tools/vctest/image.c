@@ -37,7 +37,7 @@
 const char image_template[] = "FILE/A,OUT/A,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,ENCODING/K,BACKEND/K,MISALIGN/S,TIMEOUT/K/N";
 const char tojpeg_template[] = "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,QUALITY/N,BACKEND/K,MISALIGN/S";
 const char convert_template[] =
-    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,BACKEND/K,MISALIGN/S,COUNT/N,SOURCE/K";
+    "FILE/A,WIDTH/N/A,HEIGHT/N/A,OUT/A,FORMAT/K,OUTWIDTH/N,OUTHEIGHT/N,OUTFORMAT/K,BACKEND/K,MISALIGN/S,COUNT/N,SOURCE/K,COLORSPACE/K";
 
 enum
 {
@@ -77,7 +77,8 @@ enum
 	CNV_BACKEND,
 	CNV_MISALIGN,
 	CNV_COUNT,
-	CNV_SOURCE
+	CNV_SOURCE,
+	CNV_COLORSPACE
 };
 
 /* A converter session's run: COUNT pictures out of the copies of one */
@@ -413,7 +414,7 @@ static int convert_session(struct tool *t, const struct VCFrame *in, ULONG size,
 	r.s = VC_OpenSessionTags(VCA_Codec, VCC_Raw, VCA_Kind, VCK_Converter, VCA_Width, w, VCA_Height, h, VCA_InputFormat, in->Format,
 	                         VCA_InputPitch, in->Pitch[0], VCA_OutputFormat, ofmt, VCA_OutputWidth, ow,
 	                         VCA_OutputHeight, oh, VCA_SigTask, (ULONG)t->waiter.task, VCA_SigMask, waiter_sigmask(&t->waiter),
-	                         BACKEND_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                         BACKEND_TAG(t), COLOR_SPACE_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	kv_str("convert.session", r.s != NULL ? "open" : "refused");
 	kv_unum("convert.open_us", get_time() - t0);
 	if (r.s == NULL)
@@ -497,6 +498,21 @@ static Tag source_rect(const char *text, struct VCRect *rect)
 }
 
 /**
+ * convert_arguments_ok() - Whether CONVERT's arguments name a picture and what to make of it.
+ * @t:    the tool, its color_space set from COLORSPACE
+ * @fmt:  the input's VCF_*, 0 for a name this does not know
+ * @ofmt: the output's
+ * @w:    the input's width
+ * @h:    its height
+ *
+ * Return: TRUE for known formats, a size and a known colour space.
+ */
+static BOOL convert_arguments_ok(const struct tool *t, ULONG fmt, ULONG ofmt, ULONG w, ULONG h)
+{
+	return fmt != 0 && ofmt != 0 && w != 0 && h != 0 && t->color_space != COLOR_SPACE_UNNAMED;
+}
+
+/**
  * do_convert() - CONVERT: one raw picture scaled and converted by VC_ConvertImage(), or by a converter session (COUNT).
  * @t:    the tool
  * @args: convert_template's
@@ -510,11 +526,12 @@ int do_convert(struct tool *t, LONG *args)
 	ULONG w = arg_num(args, CNV_WIDTH, 0), h = arg_num(args, CNV_HEIGHT, 0), count = arg_num(args, CNV_COUNT, 0);
 	t->backend = arg_str(args, CNV_BACKEND);
 	t->misalign = args[CNV_MISALIGN] != 0;
+	t->color_space = color_space_of_name(arg_str(args, CNV_COLORSPACE));
 	ULONG fmt = fmt_name != NULL ? format_of_name(fmt_name) : VCF_I420;
 	ULONG ofmt = ofmt_name != NULL ? format_of_name(ofmt_name) : VCF_RGB24;
-	if (fmt == 0 || ofmt == 0 || w == 0 || h == 0)
+	if (!convert_arguments_ok(t, fmt, ofmt, w, h))
 	{
-		kv_str("fail", "CONVERT needs WIDTH, HEIGHT, a FORMAT and an OUTFORMAT");
+		kv_str("fail", "CONVERT needs WIDTH, HEIGHT, a FORMAT and an OUTFORMAT; COLORSPACE: BT601, BT709, JPEG or BT709FULL");
 		return RETURN_FAIL;
 	}
 	ULONG ow = arg_num(args, CNV_OUTWIDTH, w) & ~1u, oh = arg_num(args, CNV_OUTHEIGHT, h) & ~1u;

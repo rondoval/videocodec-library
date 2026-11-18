@@ -13,7 +13,8 @@
  * stream and passes them as VCA_Extradata, PAD n zero bytes after them
  * (Annex-B's trailing_zero_8bits) to make it larger; CONFIG file passes a
  * file as VCA_Extradata instead (an avcC or hvcC record), TAG fourcc opens
- * the session with it as VCA_CodecTag.  NOPTS
+ * the session with it as VCA_CodecTag, COLORSPACE name with it as
+ * VCA_ColorSpace (the stream's colours, whatever it says).  NOPTS
  * (with FRAMED) sends the access units without timestamps, NORATE opens the
  * session without a frame rate, PACKET n sets the size of an input packet
  * (the backend imports them from 512 KiB on).  KEEP holds each picture
@@ -61,7 +62,7 @@
 
 const char decode_template[] =
     "FILE/A,REF/K,OUT/K,FRAMES/N,NOHASH/S,ENCODING/K,VERBOSE/S,FRAMED/S,FPS/N,OUTFORMAT/K,FLUSH/N,BACKEND/K,EXTRADATA/S,PAD/N,NOPTS/S,NORATE/S,PACKET/N,"
-    "HASHES/S,CONFIG/K,TAG/K,KEEP/S,RESIGNAL/N,IMPORT/K/N,IMPORTFRAMES/K/N,WIDTH/K/N,HEIGHT/K/N";
+    "HASHES/S,CONFIG/K,TAG/K,KEEP/S,RESIGNAL/N,IMPORT/K/N,IMPORTFRAMES/K/N,WIDTH/K/N,HEIGHT/K/N,COLORSPACE/K";
 
 enum
 {
@@ -90,7 +91,8 @@ enum
 	ARG_IMPORT,
 	ARG_IMPORTFRAMES,
 	ARG_WIDTH,
-	ARG_HEIGHT
+	ARG_HEIGHT,
+	ARG_COLORSPACE
 };
 
 #define DECODE_PACKETS 4               /* the session's input packets */
@@ -716,7 +718,7 @@ static void handle_event(struct decode *d, const struct VCEvent *e)
 		kv_num(kv_at("stream", d->streams, "fps_den"), e->Stream.FrameRate.Den);
 		kv_num(kv_at("stream", d->streams, "par_num"), e->Stream.Par.Num);
 		kv_num(kv_at("stream", d->streams, "par_den"), e->Stream.Par.Den);
-		kv_hex(kv_at("stream", d->streams, "colorspace"), e->Stream.ColorSpace);
+		kv_unum(kv_at("stream", d->streams, "colorspace"), e->Stream.ColorSpace);
 		d->streams++;
 		break;
 	case VCEV_EndOfStream:
@@ -1121,6 +1123,28 @@ static int decode_summary(struct decode *d, u32 total)
 }
 
 /**
+ * decode_names() - DECODE's named arguments: ENCODING and COLORSPACE.
+ * @t:    the tool; its color_space is set
+ * @args: decode_template's
+ * @file: the stream's name, whose suffix gives the codec without ENCODING
+ *
+ * Return: VCC_* of the stream, VCC_None (fail= printed) for a name this does not know.
+ */
+static ULONG decode_names(struct tool *t, LONG *args, const char *file)
+{
+	t->color_space = color_space_of_name(arg_str(args, ARG_COLORSPACE));
+	if (t->color_space == COLOR_SPACE_UNNAMED)
+	{
+		kv_str("fail", "COLORSPACE: BT601, BT709, JPEG or BT709FULL");
+		return VCC_None;
+	}
+	ULONG codec = codec_of(arg_str(args, ARG_ENCODING), file);
+	if (codec == VCC_None)
+		kv_str("fail", "ENCODING: H264, H265 or MJPEG");
+	return codec;
+}
+
+/**
  * do_decode() - DECODE: the file through a native decoder session.
  * @t:    the tool
  * @args: decode_template's
@@ -1154,12 +1178,9 @@ int do_decode(struct tool *t, LONG *args)
 	d.height = arg_num(args, ARG_HEIGHT, 0);
 	t->backend = arg_str(args, ARG_BACKEND);
 	md5_init(&d.in_md5);
-	ULONG codec = codec_of(arg_str(args, ARG_ENCODING), file);
+	ULONG codec = decode_names(t, args, file);
 	if (codec == VCC_None)
-	{
-		kv_str("fail", "ENCODING: H264, H265 or MJPEG");
 		return RETURN_FAIL;
-	}
 	d.hevc = codec == VCC_H265;
 	BOOL extradata = args[ARG_EXTRADATA] != 0;
 	const char *config_name = arg_str(args, ARG_CONFIG);
@@ -1260,7 +1281,7 @@ int do_decode(struct tool *t, LONG *args)
 	                         VCA_Framed, (ULONG)d.framed, VCA_FrameRateNum, rate, VCA_FrameRateDen, 1, VCA_InputCount, DECODE_PACKETS,
 	                         VCA_InputSize, d.chunk, VCA_OutputFormat, d.outfmt, BACKEND_TAG(t), VCA_Extradata, (ULONG)d.config,
 	                         VCA_ExtradataSize, d.config_len, VCA_CodecTag, codec_tag, VCA_Width, d.width, VCA_Height, d.height,
-	                         VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                         COLOR_SPACE_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
 	kv_str("decode.session", d.s != NULL ? "open" : "refused");
 	if (d.s == NULL)
 	{

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * vc_names.h - videocodec.library's codecs, kinds and pixel formats by name,
+ * vc_names.h - videocodec.library's codecs, kinds, pixel formats and colour spaces by name,
  * for the CLI tools (VCInfo, VCTest).
  */
 #ifndef VC_NAMES_H
@@ -13,6 +13,8 @@ const char *kind_name(ULONG kind);
 const char *format_name(ULONG format);
 #define FORMAT_BITS 32 /* the bits of a VCF_MASK() list: format numbers below this */
 ULONG format_of_name(const char *name);
+#define COLOR_SPACE_UNNAMED 0xffffffffu /* a name color_space_of_name() does not know */
+ULONG color_space_of_name(const char *name);
 #define TAG_NAME_SIZE 5 /* a FourCC's four characters and the NUL */
 char *tag_name(ULONG tag, char *buf);
 ULONG tag_of_name(const char *name);

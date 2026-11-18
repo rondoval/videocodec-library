@@ -8,11 +8,13 @@
  * after any 00 00 followed by a byte up to 03 (emulation prevention, as
  * JPEG's FF 00): the reader takes those 03 out before reading the fields,
  * which are packed bit by bit, most as Exp-Golomb numbers.  The fields are
- * walked up to the VUI's pixel aspect (H.264 7.3.2.1.1, E.1.1).
+ * walked up to the VUI's video signal type (H.264 7.3.2.1.1, E.1.1).
  */
 #include <h264_sps.h>
 
-#define H264_SPS_MAX 256u /* an SPS's bytes read, up to its VUI's aspect (scaling lists make it long) */
+#define H264_SPS_MAX 256u         /* an SPS's bytes read, up to its VUI's video signal type (scaling lists make it long) */
+#define H264_ASPECT_EXTENDED 255u /* aspect_ratio_idc Extended_SAR: the aspect's two terms follow */
+#define H264_MACROBLOCK 16u       /* rows and columns of a macroblock */
 
 /* An SPS's bits, its emulation-prevention bytes taken out */
 struct sps_bits
@@ -86,20 +88,71 @@ static void sps_skip_scaling_list(struct sps_bits *b, u32 size)
 }
 
 /**
+ * sps_vui_read() - The start of an SPS's VUI: the pixel aspect and the video signal's matrix and range.
+ * @b:          the bits, at aspect_ratio_info_present_flag
+ * @sps:        its pixel aspect filled in, if the VUI has one
+ * @matrix:     set to matrix_coefficients, if the VUI has a colour description
+ * @full_range: set to video_full_range_flag, if the VUI has a video signal type
+ *
+ * H.264 E.1.1.  A VUI cut short changes nothing past the cut.
+ */
+static void sps_vui_read(struct sps_bits *b, struct h264_sps *sps, u32 *matrix, BOOL *full_range)
+{
+	if (sps_read(b, 1)) /* aspect_ratio_info_present_flag */
+	{
+		u32 idc = sps_read(b, 8), num = 0, den = 0;
+		if (idc >= 1 && idc <= 16)
+		{
+			num = h264_aspects[idc - 1][0];
+			den = h264_aspects[idc - 1][1];
+		}
+		else if (idc == H264_ASPECT_EXTENDED)
+		{
+			num = sps_read(b, 16);
+			den = sps_read(b, 16);
+		}
+		if (b->pos <= b->count && num != 0 && den != 0)
+		{
+			sps->par.Num = (LONG)num;
+			sps->par.Den = (LONG)den;
+		}
+	}
+	if (sps_read(b, 1))   /* overscan_info_present_flag */
+		sps_read(b, 1);   /* overscan_appropriate_flag */
+	if (!sps_read(b, 1)) /* video_signal_type_present_flag */
+		return;
+	sps_read(b, 3); /* video_format */
+	BOOL full = sps_read(b, 1) != 0; /* video_full_range_flag */
+	u32 coefficients = VC_MATRIX_UNSPECIFIED;
+	if (sps_read(b, 1)) /* colour_description_present_flag */
+	{
+		sps_read(b, 16); /* colour_primaries, transfer_characteristics */
+		coefficients = sps_read(b, 8); /* matrix_coefficients */
+	}
+	if (b->pos <= b->count)
+	{
+		*full_range = full;
+		*matrix = coefficients;
+	}
+}
+
+/**
  * h264_sps_read() - What the backend needs from the first SPS in a piece of an Annex-B stream.
  * @data:   the bytes
  * @length: their count
  * @sps:    filled: the profile, 0 if no SPS starts in them; its reference frames and macroblocks;
- *          the pixel aspect its VUI gives, 0/0 for none
+ *          the pixel aspect its VUI gives, 0/0 for none; its colour space
  *
- * The SPS is read up to its VUI's aspect (H.264 7.3.2.1.1, E.1.1).  One cut
- * short gives no aspect.
+ * The SPS is read up to its VUI's video signal type (H.264 7.3.2.1.1,
+ * E.1.1).  One cut short gives no aspect; one cut before its VUI no colour
+ * space.
  */
 void h264_sps_read(const UBYTE *data, u32 length, struct h264_sps *sps)
 {
 	sps->profile = 0;
 	sps->ref_frames = sps->macroblocks = 0;
 	sps->par.Num = sps->par.Den = 0;
+	sps->color_space = VCCS_Unknown;
 	u32 i = 0;
 	while (i + 4 < length && !(data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && (data[i + 3] & 0x1f) == 7))
 		i++;
@@ -170,22 +223,11 @@ void h264_sps_read(const UBYTE *data, u32 length, struct h264_sps *sps)
 	if (sps_read(&b, 1))  /* frame_cropping_flag: four offsets */
 		for (u32 k = 0; k < 4; k++)
 			sps_ue(&b);
-	if (!sps_read(&b, 1) || !sps_read(&b, 1)) /* vui_parameters_present_flag, aspect_ratio_info_present_flag */
+	if (b.pos > b.count)
 		return;
-	u32 idc = sps_read(&b, 8), num = 0, den = 0;
-	if (idc >= 1 && idc <= 16)
-	{
-		num = h264_aspects[idc - 1][0];
-		den = h264_aspects[idc - 1][1];
-	}
-	else if (idc == 255) /* Extended_SAR */
-	{
-		num = sps_read(&b, 16);
-		den = sps_read(&b, 16);
-	}
-	if (b.pos <= b.count && num != 0 && den != 0)
-	{
-		sps->par.Num = (LONG)num;
-		sps->par.Den = (LONG)den;
-	}
+	u32 matrix = VC_MATRIX_UNSPECIFIED;
+	BOOL full_range = FALSE;
+	if (sps_read(&b, 1)) /* vui_parameters_present_flag */
+		sps_vui_read(&b, sps, &matrix, &full_range);
+	sps->color_space = VC_ColorSpaceOf(matrix, full_range, rows * (frames_only ? 1u : 2u) * H264_MACROBLOCK);
 }

@@ -201,16 +201,8 @@ def picture_bars(x: int, y: int, w: int, h: int) -> list:
     return [type(b)(x + b.x * sx, y + b.y * sy, b.w * sx, b.h * sy, b.rgb) for b in bars]
 
 
-def limited(rgb: tuple) -> np.ndarray:
-    """A colour as a limited-range video path shows it: the VPU's H.264 output keeps BT.601's 16 to 235 (a JPEG's is full)."""
-    return 16 + np.array(rgb, np.float64) * 219 / 255
-
-
 def judge_screen_bars(device: VchiqDevice, bars: list, name: str, tolerance: float = 8, max_std: float = 6) -> list[str]:
-    """Sample a patch at each bar's centre on the frontmost screen; the problems in plain words (empty: fine).
-
-    A bar passes at its own colour or at that colour's limited-range rendering, whichever is nearer.
-    """
+    """Sample a patch at each bar's centre on the frontmost screen; the problems in plain words (empty: fine)."""
     device.wake()  # the screen blanker would be in front
     problems = []
     for i, b in enumerate(bars):
@@ -219,10 +211,9 @@ def judge_screen_bars(device: VchiqDevice, bars: list, name: str, tolerance: flo
         patch = device.screenshot((cx - size // 2, cy - size // 2, size, size), name=f"{name}-bar{i}").astype(np.float64)
         mean = patch.reshape(-1, 3).mean(axis=0)
         std = patch.reshape(-1, 3).std(axis=0).max()
-        off = min(np.abs(mean - np.array(b.rgb)).max(), np.abs(mean - limited(b.rgb)).max())
+        off = np.abs(mean - np.array(b.rgb)).max()
         if off > tolerance:
-            problems.append(f"bar {i} at {cx},{cy}: mean {mean.round(1).tolist()}, wanted {list(b.rgb)} "
-                            f"(or {limited(b.rgb).round(0).astype(int).tolist()} limited)")
+            problems.append(f"bar {i} at {cx},{cy}: mean {mean.round(1).tolist()}, wanted {list(b.rgb)}")
         elif std > max_std:
             problems.append(f"bar {i} at {cx},{cy}: not flat (std {std:.1f})")
     return problems

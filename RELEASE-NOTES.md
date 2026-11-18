@@ -8,6 +8,19 @@
   Programs that leave the timeout at its default of five seconds were not
   likely to meet this.
 
+- **Video shows its true colours.** Decoded video was converted to the
+  screen's colours as if every stream were full-range BT.601, which almost
+  none is: black came out dark grey, white light grey, and the colours of HD
+  video slightly off. Each stream is now converted by what it says it holds
+  (BT.709 or BT.601, limited or full range), and one that says nothing by the
+  usual rule: BT.709 from 720 rows up, BT.601 below. Players need no change.
+
+- **For programmers: colour spaces.** `VCStreamInfo.ColorSpace` is now a
+  `VCCS_*` value for every decoder (it was the firmware's own number on the
+  VideoCore's), and `VCCS_BT709_Full` is new. `VCA_ColorSpace` on a decoder
+  session overrules what the stream says; on a converter session it says what
+  the YUV input holds, which without it is read as full-range BT.601, as
+  before. `VC_ConvertImage()` is unchanged.
 - **For programmers: no constant bit rate.** `VCA_RateControl` with `VCRC_CBR`
   is refused when the encoder session opens, with `VCERR_UNSUPPORTED`. The
   VideoCore's encoder never took it: such a session failed at its first

@@ -102,14 +102,35 @@ be done. Add a fact here when a measurement finds one.
 * **RGB to YUV in the ISP.** Always BT.601 full range: `color_space` on the
   input port, the output port or both changes nothing (the bars of
   `tests/test_vcgrab.py`).
-* **YUV to RGB in the ISP.** YUYV and NV12 input work, and are read as BT.601
-  full range, whatever `color_space` the input port has: none, BT601, BT709
-  and JPEG_JFIF give byte-identical pictures (firmware of 14 May 2025, CM4). A
-  camera's video-range picture therefore keeps its blacks at 16 and whites at
-  235. `MMAL_PARAMETER_CUSTOM_CCM` (camera group + 0x58) is taken on the input
-  port, but any enabled matrix, the identity included, turns YUV input into one
-  flat colour (255, 121, 255); disabled, the picture is as without it. So
-  there is no way to expand the range on the VPU.
+* **YUV to RGB in the ISP.** Its one conversion is BT.601 full range,
+  whatever `color_space` its ports have: none, BT601, BT709, JPEG_JFIF and
+  JFIF_Y16_255, on the input, the output or both, are all taken, read back,
+  and give byte-identical pictures (firmware of 14 May 2025, CM4). The same
+  holds behind the decoder in a tunnel, though the decoder does report the
+  stream's space on its format change: `Y709`, `Y601`, and `YJFI` for any
+  full-range stream, BT.709 ones included. Left to itself a video-range
+  picture therefore keeps its blacks at 16 and its whites at 235, and a
+  BT.709 one shows its reds and greens a little off.
+* **The ISP's colours: the custom matrix.** `MMAL_PARAMETER_CUSTOM_CCM`
+  (camera group + 0x58) on the ISP's input port: an enable word, nine
+  rationals row by row, three offsets, 22 words. Read back, each term is
+  `num x 65536 / den` over 65536. With YUV in, an enabled matrix is applied
+  to the samples themselves, before the fixed conversion:
+  `(Y', Cb', Cr') = 8 x M x (Y, Cb, Cr) + offsets / 32`, in steps of 255, and
+  that triple then goes through the BT.601 full-range conversion. The factor
+  of 8 is why an identity matrix gives one flat colour (255, 121, 255): it
+  overdrives every sample; the zero matrix gives (0, 134, 0), which is YCbCr
+  (0, 0, 0). So the matrix that turns a picture's YCbCr into the full-range
+  BT.601 YCbCr of the same colour makes its RGB right, range and matrix both:
+  with it the bars of `tests/test_colour.py` come out within 3 of 255 for
+  BT.709 and BT.601 in limited range and BT.709 in full range, from the
+  decoder's tunnel and from host-fed frames alike. The parameter is refused
+  (EINVAL) on the output and the control port. `MMAL_PARAMETER_GAMMA`
+  (+ 0x5F, an enable word and two curves of 33 16-bit points) also works on
+  this path, on any of the three ports, and can stretch 16 to 235 per
+  channel; it cannot change the matrix and is not used. A black level
+  (+ 0x53) is taken and changes nothing. Not measured: what the matrix costs
+  in pictures a second.
 * **NV12 input rows.** The ISP takes NV12 at its own height, the UV rows right
   after the picture's last (1920x1080 packed, 3110400 bytes), no 16-row padding
   needed.
@@ -118,8 +139,8 @@ be done. Add a fact here when a measurement finds one.
   `MMAL_ES_FORMAT_FLAG_COL_FMTS_WIDTH_IS_COL_STRIDE` is refused (EINVAL). It
   implies the layout from the rows: luma rows aligned to 16, the chroma rows
   after them in each column (`buffer_size_min` 3133440 for 1920x1080: 15
-  columns of 1632 lines). Read as full-range BT.601 like every other YUV input;
-  195 pictures/s to BGRA32 at 1080p. The 10-bit column format (`Y10C`) is not
+  columns of 1632 lines). Read as full-range BT.601 like every other YUV input
+  unless the custom matrix says otherwise; 195 pictures/s to BGRA32 at 1080p. The 10-bit column format (`Y10C`) is not
   among the input's encodings (below); the HVS and `ril.video_render` take it.
 * **What the ISP lists.** Its input takes 64 encodings (CM4, firmware of 14
   May 2025): the Bayer orders at 8, 10, 12, 14 and 16 bits, packed and not,

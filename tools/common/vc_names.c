@@ -121,6 +121,30 @@ ULONG format_of_name(const char *name)
 	return VCF_Unknown;
 }
 
+/* The colour spaces by name, VCCS_* the index */
+static const char *const color_space_names[] = {
+    [VCCS_BT601] = "BT601",
+    [VCCS_BT709] = "BT709",
+    [VCCS_JPEG] = "JPEG",
+    [VCCS_BT709_Full] = "BT709FULL",
+};
+
+/**
+ * color_space_of_name() - The colour space a name gives, any case.
+ * @name: BT601, BT709, JPEG or BT709FULL; NULL for none given
+ *
+ * Return: VCCS_*, VCCS_Unknown for NULL, COLOR_SPACE_UNNAMED for a name this does not know.
+ */
+ULONG color_space_of_name(const char *name)
+{
+	if (name == NULL)
+		return VCCS_Unknown;
+	for (ULONG i = 1; i < sizeof(color_space_names) / sizeof(color_space_names[0]); i++)
+		if (_Stricmp((CONST_STRPTR)name, (CONST_STRPTR)color_space_names[i]) == 0)
+			return i;
+	return COLOR_SPACE_UNNAMED;
+}
+
 /**
  * tag_name() - A FourCC as text.
  * @tag: the FourCC (VC_FOURCC())

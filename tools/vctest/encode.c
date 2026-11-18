@@ -88,13 +88,6 @@ static const struct named_value rate_controls[] = {
     {NULL, 0},
 };
 
-static const struct named_value color_spaces[] = {
-    {"BT601", VCCS_BT601},
-    {"BT709", VCCS_BT709},
-    {"JPEG", VCCS_JPEG},
-    {NULL, 0},
-};
-
 /* What ENCODE's names chose */
 struct encode_choice
 {
@@ -359,15 +352,15 @@ static const char *encode_choose(LONG *args, struct encode_choice *choice)
 	choice->profile = named(profiles, arg_str(args, ARG_PROFILE), VCP_Default);
 	choice->level = arg_num(args, ARG_LEVEL, 0);
 	choice->rate_control = named(rate_controls, arg_str(args, ARG_RATE), VCRC_Default);
-	choice->color_space = named(color_spaces, arg_str(args, ARG_COLORSPACE), VCCS_Unknown);
+	choice->color_space = color_space_of_name(arg_str(args, ARG_COLORSPACE));
 	kv_unum("encode.profile", choice->profile);
 	kv_unum("encode.level", choice->level);
 	kv_unum("encode.rate_control", choice->rate_control);
 	kv_unum("encode.color_space", choice->color_space);
 	if (choice->format == 0)
 		return "no such format";
-	if (choice->profile == UNNAMED || choice->rate_control == UNNAMED || choice->color_space == UNNAMED)
-		return "PROFILE: BASELINE, CONSTRAINED, MAIN or HIGH; RATE: VBR or CBR; COLORSPACE: BT601, BT709 or JPEG";
+	if (choice->profile == UNNAMED || choice->rate_control == UNNAMED || choice->color_space == COLOR_SPACE_UNNAMED)
+		return "PROFILE: BASELINE, CONSTRAINED, MAIN or HIGH; RATE: VBR or CBR; COLORSPACE: BT601, BT709, JPEG or BT709FULL";
 	return NULL;
 }
 

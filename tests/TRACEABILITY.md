@@ -56,7 +56,7 @@ Written by the suite's host tier (`run.sh host` rewrites it): every item the sui
 | VCA_InputFormat | `test_encoder.py::test_h264_encode` |
 | VCA_InputPitch | `test_images.py::test_convert_rgb16_720p` |
 | VCA_SourceRect | `test_images.py::test_convert_part_of_the_picture` |
-| VCA_OutputFormat | `test_decoder.py::test_chained_output` |
+| VCA_OutputFormat | `test_colour.py::test_a_stream_keeps_its_colours`, `test_decoder.py::test_chained_output` |
 | VCA_OutputWidth | `test_encoder.py::test_scaled_through_the_isp` |
 | VCA_OutputHeight | `test_encoder.py::test_scaled_through_the_isp` |
 | VCA_OutputPitch | `test_images.py::test_jpeg_decode` |
@@ -78,7 +78,7 @@ Written by the suite's host tier (`run.sh host` rewrites it): every item the sui
 | VCA_Level | `test_encoder.py::test_the_level_asked_for` |
 | VCA_Quality | `test_images.py::test_jpeg_encode` |
 | VCA_RequestKeyFrame | `test_encoder.py::test_key_frame_on_request` |
-| VCA_ColorSpace | `test_encoder.py::test_the_color_space_written` |
+| VCA_ColorSpace | `test_colour.py::test_a_converter_is_told_the_colours`, `test_colour.py::test_the_client_overrules_the_stream`, `test_encoder.py::test_the_color_space_written` |
 | VCA_Data | `test_images.py::test_jpeg_decode` |
 | VCA_Length | `test_images.py::test_jpeg_decode` |
 | VCA_Dest | `test_images.py::test_jpeg_decode` |

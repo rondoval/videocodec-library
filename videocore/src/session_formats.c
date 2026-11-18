@@ -34,6 +34,18 @@ BOOL format_is_column(ULONG format)
 }
 
 /**
+ * format_is_yuv() - Whether a format holds luma and chroma, whatever its layout.
+ * @format: VCF_*
+ *
+ * Return: TRUE for the planar, the packed 4:2:2 and the column formats.
+ */
+BOOL format_is_yuv(ULONG format)
+{
+	return format_is_planar(format) || format_is_column(format) || format == VCF_YUYV || format == VCF_UYVY || format == VCF_YVYU ||
+	       format == VCF_VYUY;
+}
+
+/**
  * format_bytes_per_pixel() - Bytes per pixel of a format's first plane.
  * @format: VCF_*
  *
@@ -81,6 +93,8 @@ u32 format_bytes_per_pixel(ULONG format)
  * color_space_mmal() - The MMAL colour space of a VCCS_*.
  * @space: VCCS_*
  *
+ * MMAL has no full-range BT.709: that goes as BT.709, its matrix.
+ *
  * Return: MMAL_COLOR_SPACE_*, unknown for anything else.
  */
 u32 color_space_mmal(ULONG space)
@@ -90,6 +104,8 @@ u32 color_space_mmal(ULONG space)
 	case VCCS_BT601:
 		return MMAL_COLOR_SPACE_ITUR_BT601;
 	case VCCS_BT709:
+		return MMAL_COLOR_SPACE_ITUR_BT709;
+	case VCCS_BT709_Full:
 		return MMAL_COLOR_SPACE_ITUR_BT709;
 	case VCCS_JPEG:
 		return MMAL_COLOR_SPACE_JPEG_JFIF;

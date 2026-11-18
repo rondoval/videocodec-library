@@ -441,6 +441,18 @@ flowchart LR
   its frames out before that.
 * **The converter** is `ril.isp` alone, pictures in and out. **The encoders** are
   `ril.video_encode` (H.264) and `ril.image_encode` (JPEG).
+* **Colours.** The ISP has one conversion from YUV to RGB, full-range BT.601,
+  and no setting for another. It does take a matrix that it applies to the YUV
+  samples before that conversion, so wherever YUV becomes RGB the session
+  gives it the matrix that turns the pictures' YCbCr into full-range BT.601
+  YCbCr of the same colour (`isp_matrices` in `session_isp.c`, one per
+  `VCCS_*`). What the pictures hold is the session's: an H.264 stream's from
+  its SPS, since the decoder names no matrix for a full-range stream, guessed
+  from the rows where the stream says nothing; a JPEG's is full-range BT.601,
+  which needs no matrix; a converter's is what its client says. Behind another
+  backend's decoder the frontend passes the stream's colour space to the
+  converter it opens. A kept ISP remembers its matrix, so a session that needs
+  none switches it off.
 * **RGB into H.264** is the decoder's tunnel the other way round: for an input
   other than I420, or a size of its own, the session tunnels `ril.isp` into
   `ril.video_encode`, I420 between them, and the client sees one session. The
@@ -644,6 +656,7 @@ The measurements behind each row and the sources are in
 | Hands input back undecoded when a decoder has no memory, and says nothing | Holds the SPS against the heap (1.75 bytes per pixel per reference frame, plus 4 MB) and counts the input until a picture size comes |
 | Raises no FORMAT_CHANGED for a decoder started at the stream's own size | Starts it at a size no stream has |
 | Reports a pixel aspect of 1/1 whatever the SPS says | Reads the aspect from the SPS |
+| Converts YUV to RGB as full-range BT.601 whatever the stream or the ports say | Gives the ISP a matrix for the pictures' own colour space (6.3) |
 | Needs a JPEG marked as one whole picture, or waits for the next | One whole picture per packet, each packet marked |
 | Drops a picture carrying the end flag through an I420 tunnel, and ignores a change of shape there | The tunnel is opaque |
 | Loses the first picture if the tunnel starts before the ISP's output | The output runs, frames out, first |

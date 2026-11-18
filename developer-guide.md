@@ -83,9 +83,18 @@ the H.265 decoder's columns (`NV12_COL128`). The rest of the `VCF_*` list
 10-bit columns, `YV12` in) is there for codec drivers to come; this one
 refuses them. NV12 and NV21 go as a camera sends them, the chroma rows right
 after the picture's own, in and out; I420, YV12 and I422 keep whole 16 rows.
-`VC_ConvertImage()` takes the same. The VideoCore reads YUV as full-range BT.601 whatever it is told, so a
-camera's video-range picture (16 to 235) comes out with its blacks at 16 and its
-whites at 235: a little flat, nothing lost.
+`VC_ConvertImage()` takes the same.
+
+**Colours.** RGB is made from what the pictures hold. A decoder knows it from
+the stream (`VCStreamInfo.ColorSpace`, a `VCCS_*`): the matrix and range an
+H.264 or H.265 stream names, and for one that names none the usual guess,
+BT.709 from 720 rows up and BT.601 below, in limited range; a JPEG is
+full-range BT.601. `VCA_ColorSpace` on a decoder session overrules the stream,
+for a container that knows better. A converter session is told with the same
+tag what its YUV input holds; told nothing, and in `VC_ConvertImage()` always,
+YUV is read as full-range BT.601, so a camera's video-range picture (16 to
+235) then comes out with its blacks at 16 and its whites at 235. YUV out of a
+decoder or converter keeps the samples as they are, whatever the tag.
 
 * **Objects.** Each side is a fixed set of `struct VCPacket` or `struct VCFrame`
   objects: the library's own (sized by `VCA_InputCount`/`InputSize`/
@@ -517,7 +526,8 @@ command's source say what the arguments do.
 | `SCREEN` | a Picasso96 screen to record: the colour bars and a moving block, or `NOISE`; `BACK n` steps it behind the others after n seconds, for three; `NATIVE` or `DEPTH 8` a screen VCGrab must refuse | `screen.*` |
 
 `DECODE`'s `OUT` writes the frames raw, the input of `TOJPEG`, `CONVERT` and
-`ENCODE`; `TAG fourcc` opens the session with it as `VCA_CodecTag`; `PACKET n` sets the size of an input packet, and from 512 KiB on the
+`ENCODE`; `TAG fourcc` opens the session with it as `VCA_CodecTag`; `COLORSPACE name` (`BT601`, `BT709`, `JPEG`, `BT709FULL`) gives
+`DECODE`'s session and `CONVERT`'s (with `COUNT`) a `VCA_ColorSpace`; `PACKET n` sets the size of an input packet, and from 512 KiB on the
 backend imports them (`SMEM`). `MISALIGN` puts the image calls' pictures 4
 bytes past a cache line, so the VPU cannot write them. `BACKEND name` runs any
 of the codec commands on that backend.
@@ -746,6 +756,7 @@ the install reboot must log `[vchiq] up:` on a debug build, or the run stops.
 | `test_players.py` | VPUPlay full screen and in a window, the colour bars, LOOP, two players, an empty stream, the shape change and pixel aspect on screen; VCPlay |
 | `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses; an image call's timeout, part of a picture converted |
 | `test_formats.py` | every further pixel format the converter offers, in and out, against ffmpeg's conversion; the ones it does not, refused |
+| `test_colour.py` | the colour bars as BT.709 and BT.601, limited and full range, and in streams that name no colours, decoded to RGB: the bars' own colours and the colour space reported; `VCA_ColorSpace` overruling a stream; a converter session told its input's colours, and told nothing |
 | `test_choice.py` (reboot) | the backend chosen by the pictures asked for: `tests/swconv/`, a software converter built only for the suite, put in `LIBS:videocodec/` for the module |
 | `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise; the profile, level, rate control and colour space asked for |
 | `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs; the saved settings, every key of them |

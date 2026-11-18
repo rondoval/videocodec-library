@@ -12,6 +12,32 @@
 #define OUTPUT_COUNT_DEFAULT 3 /* the backend's own output frames, when the client asks for none */
 #define TUNNEL_BUFFERS 3       /* decoded frames between the decoder and the ISP, unless the decoder needs more */
 
+#define CCM_TERMS 9                          /* the custom matrix: three rows of three */
+#define CCM_OFFSETS 3                        /* and an offset a row */
+#define CCM_DENOMINATOR 0x10000u             /* every term goes as a rational over this */
+#define CCM_WORDS (1 + 2 * CCM_TERMS + CCM_OFFSETS) /* the parameter: the enable word, the rationals, the offsets */
+
+/*
+ * The ISP's custom matrix for a colour space.  With YUV in, the ISP puts the
+ * samples through the matrix before its one conversion to RGB, full-range
+ * BT.601's: (Y', Cb', Cr') = 8 x terms x (Y, Cb, Cr) + offsets / 32, in steps
+ * of 255 (docs/firmware-facts.md).  So the matrix turns the pictures' YCbCr
+ * into the full-range BT.601 YCbCr of the same colour: the terms are that
+ * map's times CCM_DENOMINATOR / 8, the offsets its times 32.
+ */
+struct isp_matrix
+{
+	s32 terms[CCM_TERMS];     /* row by row: Y', Cb', Cr' from Y, Cb, Cr; 8192 is one */
+	s32 offsets[CCM_OFFSETS]; /* of Y', Cb', Cr'; 32 is one step of 255 */
+};
+
+/* By VCCS_*; all zero where the ISP's own conversion is right (VCCS_JPEG) or nothing is known */
+static const struct isp_matrix isp_matrices[] = {
+    [VCCS_BT601] = {{9539, 0, 0, 0, 9326, 0, 0, 0, 9326}, {-596, -567, -567}},
+    [VCCS_BT709] = {{9539, 947, 1829, 0, 9231, -1032, 0, -676, 9171}, {-1984, -4, -152}},
+    [VCCS_BT709_Full] = {{8192, 832, 1606, 0, 8109, -906, 0, -594, 8056}, {-1219, 495, 365}},
+};
+
 /* ---- the output shape ------------------------------------------------------------- */
 
 /**
@@ -186,7 +212,52 @@ LONG isp_open(struct vc_session *session)
 }
 
 /**
- * isp_output_configure() - The ISP's output side: the format, the frames, attached.
+ * isp_matrix_for() - The custom matrix the session's pictures need on their way to RGB.
+ * @session: the session, its stream's colour space and output shape known
+ *
+ * Return: the matrix; NULL where the ISP's own conversion is right: RGB in,
+ * YUV out, or pictures of full-range BT.601 or of nothing known.
+ */
+static const struct isp_matrix *isp_matrix_for(const struct vc_session *session)
+{
+	BOOL converts = session->kind == SESSION_CONVERTER || session->kind == SESSION_ENCODER;
+	if (converts && !format_is_yuv(session->params.InputFormat))
+		return NULL;
+	if (format_is_yuv(session->shape.format))
+		return NULL;
+	ULONG space = session->stream.ColorSpace;
+	if (space >= ARRAY_SIZE(isp_matrices) || isp_matrices[space].terms[0] == 0)
+		return NULL;
+	return &isp_matrices[space];
+}
+
+/**
+ * isp_colors_set() - Give the ISP the custom matrix of the session's pictures, or take a kept ISP's away.
+ * @session: the session, the ISP's ports committed
+ *
+ * A new ISP has none, so only a kept one is told when the session needs
+ * none.  A refusal leaves the ISP's own conversion: the picture comes, its
+ * colours as full-range BT.601's.
+ */
+static void isp_colors_set(struct vc_session *session)
+{
+	const struct isp_matrix *matrix = isp_matrix_for(session);
+	if (matrix == NULL && !session->isp->reused)
+		return;
+
+	u32 words[CCM_WORDS] = {matrix != NULL};
+	for (u32 i = 0; i < CCM_TERMS; i++)
+	{
+		words[1 + 2 * i] = matrix != NULL ? (u32)matrix->terms[i] : 0;
+		words[2 + 2 * i] = CCM_DENOMINATOR;
+	}
+	for (u32 i = 0; i < CCM_OFFSETS; i++)
+		words[1 + 2 * CCM_TERMS + i] = matrix != NULL ? (u32)matrix->offsets[i] : 0;
+	(void)mmal_port_param_set(session->base, session->isp_in, MMAL_PARAMETER_CUSTOM_CCM, words, CCM_WORDS);
+}
+
+/**
+ * isp_output_configure() - The ISP's output side: the format, the colours, the frames, attached.
  * @session: the session, the ISP created
  *
  * Run when the ISP is set up, and again after a geometry change (the port
@@ -230,6 +301,7 @@ static LONG isp_output_configure(struct vc_session *session)
 		Kprintf("[videocore] the ISP wants %ld bytes per frame, the frames have %ld\n", port->buffer_size_min, geometry->size);
 		return VCERR_BADPARAM;
 	}
+	isp_colors_set(session);
 	return set_attach(session, &session->output_set, NULL, port);
 }
 
@@ -493,6 +565,7 @@ static void converter_stream(struct vc_session *session, const struct VCRect *so
 	stream->FrameRate = session->params.FrameRate;
 	stream->Par.Num = 1;
 	stream->Par.Den = 1;
+	stream->ColorSpace = session->params.ColorSpace; /* unknown: read as full-range BT.601, the ISP's own way */
 	stream->Format = session->params.OutputFormat;
 	session->have_stream = TRUE;
 }

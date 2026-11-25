@@ -122,7 +122,8 @@ effect, which is why the RTG framebuffer needs no cache flushes and bulk buffers
 inside `vc4-mem` skip cache maintenance.
 
 The slot area is a block of Emu68's general uncached zone: the `cma` overlay
-(4 MiB by default) carves it out below 1 GiB, maps it non-cacheable and keeps
+(4 MiB by default, made in whole 2 MiB; the window's 336 KiB fit the
+smallest, `size=2`) carves it out below 1 GiB, maps it non-cacheable and keeps
 it out of AmigaOS's memory lists, and `cma.resource` in the Emu68 ROM hands it
 out. The device takes its window at its first open and gives it back at
 expunge.

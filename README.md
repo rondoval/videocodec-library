@@ -49,7 +49,7 @@ And these lines in `config.txt` on the Pi's boot partition:
 
 | Line | What it is for |
 |---|---|
-| `dtoverlay=cma` | Always needed: the memory shared with the VideoCore. The default 4 MiB is plenty. |
+| `dtoverlay=cma` | Always needed: the memory shared with the VideoCore. `vchiq.device` keeps one 336 KiB block there, and Emu68 makes the zone in whole 2 MiB, so `dtoverlay=cma,size=2` is enough and the default 4 MiB is plenty. The zone, and a 2 MiB gap beside it, come out of the Fast RAM below 1 GiB. |
 | `dtoverlay=videocore,mem=32` | Full-screen video at 24 or 32 bits. With Emu68's default 16 MiB, 1080p plays at about 17 fps. |
 | `gpu_mem=128` | Optional. The default of 76 plays one 1080p video with up to about 10 reference frames (most have 4 or fewer), or records a 1080p screen, and decodes JPEGs up to about 24 megapixels. 128 adds a second video, a video during a recording, up to 16 reference frames, and JPEGs up to about 60 megapixels. Two videos of 16 reference frames need 164. Sound does not need it. |
 

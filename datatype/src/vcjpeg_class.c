@@ -17,7 +17,7 @@
  * the file's lock, which a memory source lacks.  Its pixels are read back
  * with PDTM_READPIXELARRAY, one copy, by a direct method call: DoDTMethodA()
  * would put a GadgetInfo pointer over the message's pixel pointer
- * (docs/architecture.md section 8).
+ * (docs/architecture.md section 6).
  *
  * videocodec.library is opened by the first picture and closed by an idle
  * task once VCJPEG_IDLE_MS pass with none: its last close lets the backend

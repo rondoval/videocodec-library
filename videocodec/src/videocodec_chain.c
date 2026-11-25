@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * videocodec_chain.c - a converter behind a decoder (architecture.md 5.1).
+ * videocodec_chain.c - a converter behind a decoder (architecture.md 4.1).
  *
  * A decoder opened for an output format its row does not write runs with
  * its native output, and a converter session behind it makes the client's

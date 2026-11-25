@@ -8,7 +8,7 @@
  *   RETURN_OK     done, and the command's own checks passed
  *   RETURN_WARN   done, a self-check failed (fail=)
  *   RETURN_ERROR  the environment: a library, device, file or memory
- *                 missing, or no test hooks (fail=)
+ *                 missing (fail=)
  *   RETURN_FAIL   the API refused or failed (error=), nothing happened for
  *                 IDLE_MS, or the arguments made no sense (fail=)
  */
@@ -21,7 +21,6 @@
 #include <libraries/videocodec.h>
 
 #include <waiter.h>
-#include <vchiq_client.h>
 
 extern struct Library *VideoCodecBase;
 
@@ -32,7 +31,6 @@ extern struct Library *VideoCodecBase;
 struct tool
 {
 	struct waiter waiter;
-	struct vq_service svc;
 	const char *backend; /* BACKEND: the backend every session and image call asks for, NULL for the library's choice */
 	BOOL misalign;       /* MISALIGN: pictures 4 bytes past a cache line, which the backend then sends by bulk */
 	ULONG color_space;   /* COLORSPACE: VCCS_* a decoder or converter session is told its pictures hold, VCCS_Unknown for nothing told */
@@ -48,10 +46,6 @@ typedef int (*command_fn)(struct tool *t, LONG *args);
 
 extern const char status_template[];
 extern const char codecs_template[];
-extern const char abandon_template[];
-extern const char audio_template[];
-extern const char ahiwalk_template[];
-extern const char ahitone_template[];
 extern const char decode_template[];
 extern const char image_template[];
 extern const char tojpeg_template[];
@@ -61,15 +55,10 @@ extern const char datatype_template[];
 extern const char page_template[];
 extern const char screen_template[];
 extern const char hold_template[];
-extern const char device_template[];
 extern const char probe_template[];
 
 int do_status(struct tool *t, LONG *args);
 int do_codecs(struct tool *t, LONG *args);
-int do_abandon(struct tool *t, LONG *args);
-int do_audio(struct tool *t, LONG *args);
-int do_ahiwalk(struct tool *t, LONG *args);
-int do_ahitone(struct tool *t, LONG *args);
 int do_decode(struct tool *t, LONG *args);
 int do_image(struct tool *t, LONG *args);
 int do_tojpeg(struct tool *t, LONG *args);
@@ -79,7 +68,6 @@ int do_datatype(struct tool *t, LONG *args);
 int do_page(struct tool *t, LONG *args);
 int do_screen(struct tool *t, LONG *args);
 int do_hold(struct tool *t, LONG *args);
-int do_device(struct tool *t, LONG *args);
 int do_probe(struct tool *t, LONG *args);
 
 #endif /* VCTEST_COMMANDS_H */

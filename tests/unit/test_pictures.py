@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
-"""The picture maths (vchiqtest/pictures.py) on synthetic arrays and the colour-bar pattern."""
+"""The picture maths (videocodectest/pictures.py) on synthetic arrays and the colour-bar pattern."""
 import math
 
 import numpy as np
 import pytest
 
-from vchiqtest import pictures
-from vchiqtest.pictures import (BAR_COLOURS, bar_means, judge_bars, load_ppm, pattern, psnr, rgb565_pixels, still_pixels,
+from videocodectest import pictures
+from videocodectest.pictures import (BAR_COLOURS, bar_means, judge_bars, load_ppm, pattern, psnr, rgb565_pixels, still_pixels,
                               y_planes)
 
 

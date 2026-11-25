@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 """
-machine.py - the Amiga as a VideoCore suite uses it: emu68test's Device, with
+machine.py - the Amiga as a video suite uses it: emu68test's Device, with
 the rigs run by name (uploaded to RAM:hw/bin on their first use), the screen,
-and what the firmware says of the Pi's power.
+and what the firmware says of the Pi's power (the driver stack's VCHIQInfo,
+installed with vchiq.device).
 """
 from __future__ import annotations
 
@@ -21,10 +22,10 @@ POWER_EVENTS = {0x10000: "under-voltage", 0x20000: "ARM frequency capped", 0x400
 DELETE_AT_ONCE = 8      # files per Delete command: its line stays short
 
 
-class VchiqDevice(Device):
-    """One Amiga with the VideoCore stack on it."""
+class VideoCodecDevice(Device):
+    """One Amiga with vchiq.device and the video libraries on it."""
 
-    install_dir: Path                   # the stack's install tree, where the rigs come from
+    install_dir: Path                   # the install tree, where the rigs come from
     install_mark: int | None = None     # where the debug log was before the install's reboot; None without one
 
     # -- the rigs
@@ -62,7 +63,7 @@ class VchiqDevice(Device):
     def power(self) -> list[str]:
         """What the firmware saw of the Pi's power and temperature since the Pi started (get_throttled's
         lasting bits)."""
-        _, text = self.exec("VCInfo GCMD get_throttled", timeout=15)
+        _, text = self.exec("VCHIQInfo GCMD get_throttled", timeout=15)
         word = re.search(r"throttled=(0x[0-9a-fA-F]+)", text)
         return [what for bit, what in POWER_EVENTS.items() if word and int(word.group(1), 16) & bit]
 

@@ -22,7 +22,7 @@
 #include <exec/tasks.h>
 #include <intuition/classes.h>
 
-/* A picture under this goes to software: the VPU's round trip costs more (measured 2026-10-27, docs/architecture.md section 8) */
+/* A picture under this goes to software: the VPU's round trip costs more (measured 2026-10-27, docs/architecture.md section 6) */
 #define VCJPEG_MIN_PIXELS 1800000u
 
 /*
@@ -34,7 +34,7 @@
 /*
  * How far the recognition function looks for the frame header: past any
  * metadata, which the backend leaves out when the header would not end in
- * the image decoder's first input packet (docs/architecture.md section 9).
+ * the image decoder's first input packet (docs/architecture.md section 7).
  * What is too long even so is refused by the backend at once and handed over
  * by the class.
  */

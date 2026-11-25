@@ -1,3 +1,26 @@
+# Release notes - videocodec-library 0.7
+
+- **The video libraries come with Kinora.** `videocodec.library`,
+  `videocore.codec`, `vcjpeg.datatype`, `VCInfo` and `VCGrab` now have a
+  repository of their own and ship in Kinora's archive. Its Install script
+  installs them with the player or on their own; `vcjpeg.datatype` and `VCGrab`
+  are parts you tick. `vchiq.device` stays in the Emu68 driver stack, whose
+  Install script must have put it in `DEVS:` first. Nothing installed before is
+  removed. The libraries work as in 0.6.
+- **`VCInfo` checks the video side.** It lists the library and each codec
+  driver with its codecs and memory, and opens and closes a session of each, so
+  a VideoCore that does not answer no longer passes. For the link itself
+  (Emu68, `vchiq.device`, the firmware, `gpu_mem`, throttling) it sends you to
+  the driver stack's `VCHIQInfo`, which takes over `GCMD` and `DUMP`.
+  `COUNTERS` shows the codec drivers' counters. `COMPONENTS` is gone.
+- **For developers:** the repository builds inside Kinora (`./build.sh` in
+  Kinora's root), and its CI is Kinora's. The test suite's Python package is
+  `videocodectest`, installed to `share/videocodec-testing/`; `VCTest` has no
+  device or sound commands any more.
+
+Versions up to 0.6 shipped from `emu68-vchiq-library` (now `emu68-vchiq-driver`),
+with `vchiq.device` and `videocore.audio`, in the Emu68 driver stack.
+
 # Release notes - emu68-vchiq-library 0.6
 
 - **An image call that gives up no longer stops the VideoCore.** A picture

@@ -11,8 +11,8 @@ target_compile_definitions(swconv_codec PRIVATE
     LIBRARY_REVISION=${PROJECT_VERSION_MINOR}
     LIBRARY_NAME="${PROJECT_NAME}"
 )
-target_compile_options(swconv_codec PRIVATE ${VCHIQ_MODULE_COMPILE_OPTIONS})
-target_link_options(swconv_codec PRIVATE ${VCHIQ_MODULE_LINK_OPTIONS})
+target_compile_options(swconv_codec PRIVATE ${VIDEOCODEC_MODULE_COMPILE_OPTIONS})
+target_link_options(swconv_codec PRIVATE ${VIDEOCODEC_MODULE_LINK_OPTIONS})
 target_link_libraries(swconv_codec PRIVATE videocodec_headers Emu68Common::common)
 
 emu68_module_layout(swconv_codec)

@@ -1,8 +1,8 @@
 name: Versioning
 
 # Gates every PR on a version bump + RELEASE-NOTES.md update + a clean build inside
-# the stack, and auto-tags v<version> on merge to main. The logic lives in the
-# stack's reusable workflow so all components stay in lock-step.
+# Kinora, which builds and ships this repository, and auto-tags v<version> on merge
+# to main. The logic lives in Kinora's reusable workflow, shared with rpivid-codec.
 on:
   pull_request:
     branches: [main]
@@ -14,6 +14,6 @@ permissions:
 
 jobs:
   versioning:
-    uses: rondoval/emu68-driver-stack/.github/workflows/component-versioning.yml@main
+    uses: rondoval/kinora/.github/workflows/component-versioning.yml@main
     with:
-      source_dir_var: EMU68_VCHIQ_SOURCE_DIR
+      source_dir_var: KINORA_VIDEOCODEC_SOURCE_DIR

@@ -1,34 +1,29 @@
-# emu68-vchiq-library
+# videocodec-library
 
-> **Releases:** this component ships as part of the
-> [emu68-driver-stack](https://github.com/rondoval/emu68-driver-stack): the downloadable
-> `.lha` and bundled documentation are published there. This repository is source-only
-> and versioned via git tags.
+> **Releases:** these libraries ship with [Kinora](https://github.com/rondoval/kinora):
+> the downloadable `.lha`, its Install script and the bundled documentation are
+> published there. This repository is source-only and versioned via git tags.
 
-Hardware video, JPEG pictures and sound for AmigaOS on a PiStorm with a
-Raspberry Pi 4 or CM4. The Pi's VideoCore chip does the work and the 68k stays
-almost idle: a 1080p video goes straight into your RTG screen without the 68k
-touching a pixel.
+Hardware video and JPEG pictures for AmigaOS on a PiStorm with a Raspberry Pi 4
+or CM4. The Pi's VideoCore chip does the work and the 68k stays almost idle: a
+1080p video goes straight into your RTG screen without the 68k touching a pixel.
 
-> **Experimental.** This is the first release. It has run on real hardware in
-> a scripted test cycle, but expect rough edges: see
-> [Known limitations](#known-limitations).
+> **Experimental.** It has run on real hardware in a scripted test cycle, but
+> expect rough edges: see [Known limitations](#known-limitations).
 
 ---
 
 ## What you get
 
 - **Hardware video.** The VideoCore decodes H.264 and MJPEG and scales each
-  picture to the screen. [Kinora](#playing-a-video), the stack's own film
-  player, plays videos through it with their sound.
+  picture to the screen. [Kinora](#playing-a-video), the film player these
+  libraries come with, plays videos through it with their sound.
 - **Faster JPEG pictures in every program.** `vcjpeg.datatype` decodes large
   JPEGs on the VideoCore for MultiView, Workbench and anything else that loads
   pictures through datatypes.
-- **Sound through the Pi.** `videocore.audio`, an AHI driver, plays every AHI
-  program to HDMI or the headphone jack.
 - **Screen recording.** `VCGrab` records an RTG screen to an MKV file and grabs
   stills, the VideoCore doing the work and the Amiga carrying on undisturbed.
-- **`VCInfo`** checks the setup and says what to fix.
+- **`VCInfo`** checks the video setup and says what to fix.
 - **`videocodec.library`** gives programs all of this and more: decoding JPEG,
   PNG, GIF, BMP, TGA and PPM pictures, encoding H.264 and JPEG, scaling and
   converting pictures.
@@ -41,9 +36,11 @@ touching a pixel.
   untested.)
 - **Emu68 newer than 1.1.0-beta.1**: the tagged releases do not have the `cma`
   overlay yet.
+- **`vchiq.device`**, the link to the VideoCore, from the
+  [Emu68 driver stack](https://github.com/rondoval/emu68-driver-stack): its
+  Install script puts it in `DEVS:`, with `VCHIQInfo`, which checks the link.
 - **AmigaOS 3.x**; `vcjpeg.datatype` needs AmigaOS 3.2.
 - **Picasso96 and an RTG screen** for video.
-- **AHI 4 or 6** for sound.
 
 And these lines in `config.txt` on the Pi's boot partition:
 
@@ -51,7 +48,7 @@ And these lines in `config.txt` on the Pi's boot partition:
 |---|---|
 | `dtoverlay=cma` | Always needed: the memory shared with the VideoCore. `vchiq.device` keeps one 336 KiB block there, and Emu68 makes the zone in whole 2 MiB, so `dtoverlay=cma,size=2` is enough and the default 4 MiB is plenty. The zone, and a 2 MiB gap beside it, come out of the Fast RAM below 1 GiB. |
 | `dtoverlay=videocore,mem=32` | Full-screen video at 24 or 32 bits. With Emu68's default 16 MiB, 1080p plays at about 17 fps. |
-| `gpu_mem=128` | Optional. The default of 76 plays one 1080p video with up to about 10 reference frames (most have 4 or fewer), or records a 1080p screen, and decodes JPEGs up to about 24 megapixels. 128 adds a second video, a video during a recording, up to 16 reference frames, and JPEGs up to about 60 megapixels. Two videos of 16 reference frames need 164. Sound does not need it. |
+| `gpu_mem=128` | Optional. The default of 76 plays one 1080p video with up to about 10 reference frames (most have 4 or fewer), or records a 1080p screen, and decodes JPEGs up to about 24 megapixels. 128 adds a second video, a video during a recording, up to 16 reference frames, and JPEGs up to about 60 megapixels. Two videos of 16 reference frames need 164. |
 
 Emu68 reads `config.txt` only when the Pi starts, so press Ctrl-Amiga-Amiga or
 power-cycle after changing it. Memory given to `gpu_mem` is taken from the
@@ -62,22 +59,20 @@ Amiga: 128 costs it 52 MiB of Fast RAM. `VCInfo` shows what is free: `gpu_mem` l
 
 ## Installation
 
-Tick what you want in the stack's Install script. `vcjpeg.datatype` brings
-`videocodec` along, and `videocore.audio` brings `vchiq.device` and `VCInfo`,
-which are all of it that sound needs. Take the `-rangeops` archive: an Emu68 new
-enough for this has the dcache extensions.
+Kinora's Install script installs the video libraries, with the player or on
+their own. `vcjpeg.datatype` and `VCGrab` are parts of their own: tick them if
+you want them. `vchiq.device` must be there first, from the driver stack's
+Install script.
 
-| Tick | File | Installed to |
-|---|---|---|
-| `videocodec` | `vchiq.device` | `DEVS:` |
-| | `videocodec.library` | `LIBS:` |
-| | `videocore.codec` | `LIBS:videocodec/` |
-| | `VCInfo` | `C:` |
-| | `VCGrab` and its icon | `SYS:Tools/Commodities/` |
-| `videocore.audio` | `videocore.audio` | `DEVS:AHI/` |
-| | `VIDEOCORE` | `DEVS:AudioModes/` |
-| `vcjpeg.datatype` | `vcjpeg.datatype` | `SYS:Classes/DataTypes/` |
-| | `VCJPEG` | `SYS:Storage/DataTypes/` |
+| File | Installed to |
+|---|---|
+| `videocodec.library` | `LIBS:` |
+| `videocore.codec` | `LIBS:videocodec/` |
+| `rpivid.codec`, the H.265 driver ([rpivid-codec](https://github.com/rondoval/rpivid-codec)) | `LIBS:videocodec/` |
+| `VCInfo` | `C:` |
+| `VCGrab` and its icon (if ticked) | `SYS:Tools/Commodities/` |
+| `vcjpeg.datatype` (if ticked) | `SYS:Classes/DataTypes/` |
+| `VCJPEG`, its descriptor | `SYS:Storage/DataTypes/` |
 
 To install by hand, copy the files as above. For `vcjpeg.datatype`, also add
 this line to `S:User-Startup`:
@@ -92,23 +87,24 @@ Then reboot, and check the setup:
 VCInfo
 ```
 
-It checks each part in turn, says what to fix, and ends with `PASS`.
-`VCInfo CODECS` lists what the hardware can do.
+It checks the library and each codec driver, opens a video session of each,
+says what to fix, and ends with `PASS`. When the VideoCore does not answer it
+sends you to `VCHIQInfo`, the driver stack's check of the link. `VCInfo CODECS`
+lists what the hardware can do.
 
 ---
 
 ## Playing a video
 
-[Kinora](https://github.com/rondoval/kinora), the stack's own film player,
+[Kinora](https://github.com/rondoval/kinora), which these libraries come with,
 plays video files (Matroska, MP4 and QuickTime, MPEG transport streams) with
 their sound and subtitles, the pictures decoded through `videocodec.library`.
 Its README has what it plays and how to install it.
 
 The VideoCore takes 8-bit H.264 up to 1920x1080, or 1080x1920 upright, and
 keeps up with 1080p at 60 fps, and MJPEG up to 4096 wide and 1920 tall. Larger
-and 10-bit H.264 it refuses (error `-8`). H.265 needs the stack's
-`rpivid.codec`, on the HEVC block of a Pi 4 or CM4: its README has what it
-plays. Re-encode the rest on a PC (`scale=-2:1920` for an upright one):
+and 10-bit H.264 it refuses (error `-8`). H.265 goes to `rpivid.codec`, on the
+HEVC block of a Pi 4 or CM4: its README has what it plays. Re-encode the rest on a PC (`scale=-2:1920` for an upright one):
 
 ```sh
 ffmpeg -i video.mp4 -vf scale=1920:-2 -c:v libx264 -pix_fmt yuv420p -crf 20 -c:a copy video-1080p.mp4
@@ -201,31 +197,8 @@ the line in `S:User-Startup` does that. Delete the line and reboot to go back.
 
 ---
 
-## Sound
-
-In the AHI preferences, pick a VideoCore mode for a unit and choose its
-output.
-
-| Mode | |
-|---|---|
-| `VideoCore:16 bit stereo++` | The everyday mode. |
-| `VideoCore:HiFi 16 bit stereo++` | Better with many channels, a little more work for the 68k. |
-| `VideoCore:HiFi 16 bit 7.1 multichannel` | Eight channels for an AV receiver on HDMI. Needs AHI 6 and a program that plays 7.1. A stereo display plays only the front pair. |
-
-| Output | Plays to |
-|---|---|
-| `HDMI0` (the default) | the HDMI port next to the power socket on a Pi 4 |
-| `HDMI1` | the second HDMI port |
-| `Headphone jack` | the headphone jack (on a CM4 it depends on the carrier board) |
-
-All modes take 8000 to 48000 Hz, and several programs can play at once. The
-unit's output volume in the AHI preferences sets the VideoCore's.
-
----
-
 ## Known limitations
 
-- Sound latency is about 40 ms, and recording is not supported.
 - A video that changes its picture size partway is scaled into frames sized
   for its first picture, so a change between 4:3 and 16:9 stays stretched.
 - Two 1080p videos play smoothly in windows. Full screen beside a window keeps
@@ -234,7 +207,6 @@ unit's output volume in the AHI preferences sets the VideoCore's.
   error `-7`), press Ctrl-Amiga-Amiga. That restarts the Pi and the VideoCore
   with it; `C:Reboot` restarts only the 68k. A crash during a video or a
   recording can cause this.
-- Not tried yet: the headphone jack and the 7.1 channel order by ear.
 
 ---
 
@@ -242,18 +214,18 @@ unit's output volume in the AHI preferences sets the VideoCore's.
 
 | Symptom | Cause and cure |
 |---|---|
-| `VCInfo` says `cma.resource missing` | Add `dtoverlay=cma` to `config.txt`. |
+| `VCInfo` says the VideoCore does not answer | Run `VCHIQInfo`: it checks the link and says what to fix. |
+| `VCHIQInfo` says `cma.resource missing` | Add `dtoverlay=cma` to `config.txt`. |
 | The VideoCore connection does not come back after a reboot, or after `Avail FLUSH` during a video | Press Ctrl-Amiga-Amiga. If it still does not come back, power off and on. The firmware starts its side of the connection only once per Pi start, and it cannot always be taken over. |
 | Error `-8` as a video starts | The video is 10-bit, 4:2:2 or too large. Re-encode it (see [Playing a video](#playing-a-video)). |
 | Error `-2` as a video starts | The VideoCore is out of memory: a second video, one with many reference frames, or a video during a recording. Close the other video, or set `gpu_mem=128` in `config.txt`; `VCInfo` shows what is free. |
 | Colours banded on a 16-bit screen | The hardware does not dither. Play on a 24- or 32-bit screen. |
-| The VideoCore modes are missing from the AHI preferences | Reboot, or run `AddAudioModes REFRESH`. |
 
 ---
 
 ## For developers
 
-The archive's `Developer/` drawer holds the headers, a minimal video player
+Kinora's archive's `Developer/` drawer holds the headers, a minimal video player
 and picture viewer with their sources (`Examples/videocodec`), and the test
 tools (`Tools`). None of it is installed.
 
@@ -264,6 +236,5 @@ building and the hardware tests, and
 
 ## License
 
-BSD-3-Clause (see `LICENSE`). The transport follows the Linux VCHIQ core
-(GPL-2.0 OR BSD-3-Clause, Broadcom) and the codec driver Broadcom's
-BSD-3-Clause `userland`.
+BSD-3-Clause (see `LICENSE`). The codec driver follows Broadcom's BSD-3-Clause
+`userland`.

@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from vchiqtest.material import ffmpeg
-from vchiqtest.pictures import psnr, y_planes
-from vchiqtest.tools import assert_nothing_left, vctest
+from videocodectest.material import ffmpeg
+from videocodectest.pictures import psnr, y_planes
+from videocodectest.tools import assert_nothing_left, vctest
 
 CHAINED_LEAST_DB = 40.0  # the chain's luma against ffmpeg's: the converter only repacks it, a wrong picture scores 10 to 15
 

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * status.c - STATUS: vchiq.device's connection and counters (NSCMD_VQ_GETINFO)
- * and every codec driver's (VC_GetBackendInfo()); CODECS: the codec table
+ * status.c - STATUS: vchiq.device's connection and counters as the codecs
+ * leave them (NSCMD_VQ_GETINFO, a request that opens no service) and every
+ * codec driver's (VC_GetBackendInfo()); CODECS: the codec table
  * (VC_QueryCodec()).  The same facts VCInfo prints for people, as key=value.
  */
 #ifdef __INTELLISENSE__
@@ -12,6 +13,7 @@
 #include <proto/videocodec.h>
 #endif
 
+#include <devices/vchiq.h>
 #include <dos/dos.h>
 #include <exec/errors.h>
 #include <string.h>
@@ -29,6 +31,51 @@ const char codecs_template[] = "OF/M";
 /* vi_Bringup's values, by number */
 static const char *const bringups[] = {"fresh", "resumed", "repaired", "reinit"};
 
+/* What the device said: its version, and its answer to NSCMD_VQ_GETINFO */
+struct device_info
+{
+	UWORD version;
+	UWORD revision;
+	struct VchiqInfo info;
+};
+
+/**
+ * device_info_get() - vchiq.device's version and NSCMD_VQ_GETINFO, on a request that opens no service.
+ * @out:   filled in
+ * @error: the open's io_Error when it failed, else 0
+ *
+ * Return: 0, RETURN_ERROR when the device did not open, RETURN_FAIL when it did not answer.
+ */
+static int device_info_get(struct device_info *out, LONG *error)
+{
+	memset(out, 0, sizeof(*out));
+	*error = 0;
+	struct MsgPort *port = CreateMsgPort();
+	struct IOVchiqReq *io = port != NULL ? (struct IOVchiqReq *)CreateIORequest(port, sizeof(struct IOVchiqReq)) : NULL;
+	int rc = RETURN_ERROR;
+	if (io != NULL)
+	{
+		io->iovq_FourCC = 0; /* no service: the request serves NSCMD_VQ_GETINFO only */
+		if (OpenDevice((CONST_STRPTR)VCHIQ_NAME, 0, (struct IORequest *)io, 0) != 0)
+			*error = io->iovq_Req.io_Error;
+		else
+		{
+			struct Library *device = &io->iovq_Req.io_Device->dd_Library;
+			out->version = device->lib_Version;
+			out->revision = device->lib_Revision;
+			io->iovq_Req.io_Command = NSCMD_VQ_GETINFO;
+			io->iovq_Req.io_Data = &out->info;
+			io->iovq_Req.io_Length = sizeof(out->info);
+			rc = DoIO((struct IORequest *)io) == 0 ? 0 : RETURN_FAIL;
+			CloseDevice((struct IORequest *)io);
+		}
+		DeleteIORequest((struct IORequest *)io);
+	}
+	if (port != NULL)
+		DeleteMsgPort(port);
+	return rc;
+}
+
 /**
  * do_status() - STATUS: the connection's state and counters, and every backend's.
  * @t:    the tool
@@ -38,24 +85,24 @@ static const char *const bringups[] = {"fresh", "resumed", "repaired", "reinit"}
  */
 int do_status(struct tool *t, LONG *args)
 {
+	(void)t;
 	(void)args;
-	struct vq_service *s = &t->svc;
-	if (!vq_open(s, &t->waiter.timer, 0, 0, 0, NULL))
+	struct device_info device;
+	LONG error;
+	int rc = device_info_get(&device, &error);
+	if (rc == RETURN_ERROR)
 	{
-		kv_num("vchiq.error", s->error);
-		kv_str("fail", s->error == IOERR_OPENFAIL ? "vchiq.device did not load" : "no link to the VideoCore");
+		kv_num("vchiq.error", error);
+		kv_str("fail", error == IOERR_OPENFAIL ? "vchiq.device did not load" : "no link to the VideoCore");
 		return RETURN_ERROR;
 	}
-	struct Library *device = &s->io->iovq_Req.io_Device->dd_Library;
-	kv_version("vchiq.device", device->lib_Version, device->lib_Revision);
-	struct VchiqInfo info;
-	BOOL ok = vq_get_info(s, &info);
-	vq_close(s);
-	if (!ok)
+	if (rc == RETURN_FAIL)
 	{
 		kv_str("fail", "NSCMD_VQ_GETINFO failed");
 		return RETURN_FAIL;
 	}
+	kv_version("vchiq.device", device.version, device.revision);
+	const struct VchiqInfo info = device.info;
 	kv_hex("vchiq.window", info.vi_WindowBase);
 	kv_unum("vchiq.window_bytes", info.vi_WindowSize);
 	kv_unum("vchiq.session", info.vi_Sessions);

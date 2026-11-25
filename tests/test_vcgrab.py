@@ -12,10 +12,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vchiqtest.material import ffmpeg, sh
-from vchiqtest.pictures import BAR_COLOURS, judge_bars, key_frames, pattern, raw_bars
-from vchiqtest.tools import ZC_TROUBLE, assert_nothing_left, dt_page, judge_screen_bars, status, vctest
-from test_ahi import MODE_16BIT
+from videocodectest.material import ffmpeg, sh
+from videocodectest.pictures import BAR_COLOURS, judge_bars, key_frames, pattern, raw_bars
+from videocodectest.tools import ZC_TROUBLE, assert_nothing_left, dt_page, judge_screen_bars, status, vctest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools" / "vcgrab" / "mkv" / "tests"))  # the muxer's own file reader
 from test_mkv import CLUSTER, CUES, File  # noqa: E402
@@ -587,17 +586,6 @@ def test_beside_a_decode_at_full_speed(device, material, artifacts, record_prope
     record_property("decode", f"{r.num('decode.frames')} frames")
     n = numbers_of(text)
     mkv = fetch(device, artifacts, "RAM:hw/decode.mkv", "decode.mkv")
-    beside_a_take(device, artifacts, record_property, n, text, mkv)
-
-
-def test_beside_sound(device, artifacts, record_property):
-    """AHI playing through videocore.audio for the whole take: the tone neither late nor cut short."""
-    with showing(device):
-        tone = device.start("VCTest", f"AHITONE MODE {MODE_16BIT} MS 8000")
-        time.sleep(1)
-        rc, text, n, mkv = grab(device, artifacts, "sound.mkv", "SECONDS 5")
-        r = tone.wait(30)
-    assert rc == 0 and r.passed, f"rc {rc}: {text}; the tone: {r.kv.get('fail')}"
     beside_a_take(device, artifacts, record_property, n, text, mkv)
 
 

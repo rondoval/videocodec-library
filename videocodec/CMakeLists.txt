@@ -35,7 +35,7 @@ add_executable(videocodec_library
     src/videocodec_session.c
     src/videocodec_image.c
     src/videocodec_tags.c
-    ${VCHIQ_SHARED_DIR}/image_info.c
+    ${VIDEOCODEC_SHARED_DIR}/image_info.c
 )
 target_compile_definitions(videocodec_library PRIVATE
     LIBRARY_IDSTRING="${VIDEOCODEC_VERSTRING}"
@@ -43,13 +43,13 @@ target_compile_definitions(videocodec_library PRIVATE
     LIBRARY_REVISION=${PROJECT_VERSION_MINOR}
     LIBRARY_NAME="${PROJECT_NAME}"
 )
-target_compile_options(videocodec_library PRIVATE ${VCHIQ_MODULE_COMPILE_OPTIONS})
-target_link_options(videocodec_library PRIVATE ${VCHIQ_MODULE_LINK_OPTIONS})
+target_compile_options(videocodec_library PRIVATE ${VIDEOCODEC_MODULE_COMPILE_OPTIONS})
+target_link_options(videocodec_library PRIVATE ${VIDEOCODEC_MODULE_LINK_OPTIONS})
 # Its own headers only: no vchiq, no MMAL.
 target_include_directories(videocodec_library PRIVATE
     include
     ${VIDEOCODEC_GENERATED_INCLUDE_DIR}
-    ${VCHIQ_SHARED_DIR}/include
+    ${VIDEOCODEC_SHARED_DIR}/include
 )
 add_dependencies(videocodec_library videocodec_sfd_headers)
 target_link_libraries(videocodec_library PRIVATE Emu68Common::common)

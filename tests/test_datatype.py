@@ -9,9 +9,9 @@ import time
 
 import pytest
 
-from vchiqtest.pictures import psnr
+from videocodectest.pictures import psnr
 from emu68test.results import expect
-from vchiqtest.tools import MIB, assert_clean, assert_nothing_left, codec_memory, dt_load, dt_page, status, still_reference, still_rgb
+from videocodectest.tools import MIB, assert_clean, assert_nothing_left, codec_memory, dt_load, dt_page, status, still_reference, still_rgb
 
 ROUTES = [("j1080.jpg", True), ("j4000.jpg", True), ("jodd.jpg", True), ("j420.jpg", False), ("jprog.jpg", False), ("jcmyk.jpg", False)]
 PAGES = [pytest.param(("j1080.jpg", "jodd.jpg"), 10, id="two-sizes"),  # side by side, these ran the codec heap out

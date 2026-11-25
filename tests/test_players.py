@@ -9,7 +9,7 @@ import time
 import pytest
 
 from emu68test.results import expect
-from vchiqtest.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
+from videocodectest.tools import assert_nothing_left, fitted, judge_screen_bars, picture_bars, vpuplay
 
 BORDERS = (4, 11, 4, 2)  # a Workbench window's left, top, right and bottom borders when nothing better is known
 SETTLE_S = 3  # from a player's start to its screen showing the bars

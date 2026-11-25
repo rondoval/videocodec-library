@@ -1,9 +1,9 @@
-# emu68-vchiq-library: firmware facts
+# videocodec-library: firmware facts
 
 What the VideoCore firmware and the platform under it actually do: measured on a
 Pi 4 and a CM4 unless a source is named. The firmware documents little of this
 and refuses almost nothing, so these are the facts behind the rules in
-[architecture.md](architecture.md) section 9. `AGENTS.md` lists what must never
+[architecture.md](architecture.md) section 7. `AGENTS.md` lists what must never
 be done. Add a fact here when a measurement finds one.
 
 ---
@@ -208,7 +208,7 @@ be done. Add a fact here when a measurement finds one.
 
 ## 3. The image decoder
 
-`ril.image_decode` (`VCInfo COMPONENTS` and probe sessions) takes
+`ril.image_decode` (a survey of its ports, and probe sessions) takes
 JPEG, PNG, GIF, BMP, TGA and PPM in any pieces, at least 2 buffers of 80 KiB.
 
 * **Alone** its output is only its own format (I420 for a JPEG, RGB565 for a GIF,
@@ -328,31 +328,6 @@ does).
 `ril.video_decode` takes its compressed input the same way: H.264 and JPEG in 1
 MiB imported packets decode bit exact, and a camera's frames ran so for a minute
 at each size up to 1920x1080.
-
-### `AUDS` (`tests/test_audio.py`)
-
-Twenty-byte little-endian messages (`shared/include/auds_proto.h`, after userland's
-`vc_vchi_audioserv_defs.h`); the firmware speaks version 3 and takes our 2.
-
-* It answers CONTROL, CONFIG and CLOSE with a RESULT, and OPEN, START, STOP and
-  WRITE with nothing.
-* A WRITE with `max_packet` 0 announces one bulk transmit of the samples. The
-  firmware copies them at once (the bulk is back in about 1 ms) and queues them
-  itself.
-* COMPLETE counts the bytes played, at the configured rate exactly (8000 to
-  48000 Hz on HDMI0, HDMI1 and the jack alike, within 0.3%); bit 30 says it ran
-  dry. With one 10 ms chunk in flight every COMPLETE carries it and 3 s of sound
-  take 6.3 s; two in flight play without a gap.
-* STOP (`draining` 0) with four chunks queued still reports three quarters of them
-  played within 300 ms.
-* HDMI1 with nothing attached plays as if it were there. The jack's PWM pins (GPIO
-  40, 41) are already set to ALT0 on the Pi 4, so nothing needs muxing. Volume is an
-  attenuation in 1/256 dB.
-* CONFIG takes 1 to 8 channels on every output and they are consumed at the
-  rate. Nothing sets their order (CONFIG's `channelmap` is version 3's, and
-  Linux's driver never sends one), so videocore.audio sends a 7.1 frame in
-  HDMI's order. On a stereo display only the first two channels are heard; the
-  other six are dropped, not mixed in.
 
 ### `ril.audio_decode`
 

@@ -9,7 +9,7 @@ import re
 
 import pytest
 
-from vchiqtest.tools import MIB, assert_nothing_left, codec_memory, derived, held, status, vctest
+from videocodectest.tools import MIB, assert_nothing_left, codec_memory, derived, held, status, vctest
 from test_encoder import H, W, bars
 
 LEAVE_MIB = (64, 32, 16, 12, 8, 6, 4, 3, 2)

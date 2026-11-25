@@ -21,41 +21,27 @@ CODEC_ROWS = (r"^\d+ codecs$", r"level 4\.0", rf"H264 decoder: .*{CHAINED}[^,]+,
 
 @pytest.mark.smoke
 def test_summary(device, record_property):
-    """VCInfo alone: the setup in plain words, every part there, PASS (warnings allowed: they are the machine's)."""
+    """VCInfo alone: the library, each codec driver with its codecs, a session of each opened and closed, PASS (warnings
+    allowed: they are the machine's)."""
     rc, text = device.run_text("VCInfo", "")
     assert rc in (0, 5), f"return code {rc}:\n{text}"
-    for regex in (r"^  VCHIQ node: ", r"^  vchiq\.device: .*connected", r"^  firmware: ", r"^  temperature: ", r"^  gpu_mem: ",
-                  r"codec memory \d+ MiB free", r"^PASS"):
+    for regex in (r"^Video setup$", r"^  videocodec: +videocodec\.library \d+\.\d+$",
+                  r"^  codec driver: +videocore\.codec, \d+ codecs, codec memory \d+ MiB free",
+                  r"^  session: +videocore\.codec: its H264 decoder opened and closed$", r"^PASS"):
         expect(text, regex, "the summary")
-    for what in ("throttling", "gpu_mem", "vchiq\\.device"):
-        m = re.search(rf"^  {what}: .*$", text, re.M)
-        record_property(what, m.group(0).strip() if m else "no line")
+    assert "FAIL" not in text, text
+    for line in re.findall(r"^  (?:codec driver|session): .*$", text, re.M):
+        record_property(line.split(":")[0].strip() + " " + line.split()[2].rstrip(","), line.strip())
 
 
-def test_window_dump(device):
-    """VCInfo DUMP: the shared window, read only."""
-    rc, text = device.run_text("VCInfo", "DUMP")
-    expect(text, r"^PASS$", "DUMP")
-    expect(text, r"host: flags 0x", "the host side of the window")
-    expect(text, r"VPU debug\[\]", "the VPU side of the window")
-
-
-def test_gencmd(device):
-    """VCInfo GCMD with a command of two words: gencmd's answer, status 0."""
-    rc, text = device.run_text("VCInfo", 'GCMD "measure_clock arm"')
-    expect(text, r"^PASS$", "GCMD")
-    expect(text, r'"measure_clock arm" -> status 0, .*: frequency\(\d+\)=\d+$', "gencmd's answer")
-
-
-def test_components(device, artifacts, record_property):
-    """VCInfo COMPONENTS: the firmware's MMAL components and codec switches, kept whole in the artifacts."""
-    rc, text = device.run_text("VCInfo", "COMPONENTS", timeout=120)
-    expect(text, r"^PASS$", "COMPONENTS")
-    (artifacts / "components.txt").write_text(text, encoding="latin-1")
-    for comp in ("ril.image_decode", "ril.video_encode", "ril.audio_decode"):
-        m = re.search(rf"^{re.escape(comp)}: .*$", text, re.M)
-        record_property(comp, m.group(0) if m else "not listed")
-    record_property("MJPG on ril.video_encode", "yes" if re.search(r"MJPG", text) else "no")
+@pytest.mark.covers("VC_GetBackendInfo")
+def test_counters(device):
+    """VCInfo COUNTERS: each codec driver's ABI, codecs and sessions, and videocore.codec's codec memory."""
+    rc, text = device.run_text("VCInfo", "COUNTERS")
+    assert rc == 0, f"return code {rc}:\n{text}"
+    for regex in (r"^videocore\.codec: ABI \d+\.\d+, \d+ codecs, 0 sessions", r"^videocore\.codec: codec memory \d+ MiB free",
+                  r"^PASS$"):
+        expect(text, regex, "COUNTERS")
 
 
 def test_codec_table(device):

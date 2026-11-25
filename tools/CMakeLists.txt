@@ -2,10 +2,9 @@
 # the two modules are their own and do not reach this directory.
 #
 #   VCInfo    the user's check: the setup in plain words, what the codecs do,
-#             gencmd, the firmware's MMAL components, the connection's counters
-#             and the shared window (vchiq.device, videocodec.library)
+#             the codec drivers' counters (videocodec.library's calls only)
 #   VCTest    the test rig the suite drives (tests/): one command per run,
-#             facts as key=value (STATUS, CODECS, DECODE, IMAGE, AUDIO, ...)
+#             facts as key=value (STATUS, CODECS, DECODE, IMAGE, ENCODE, ...)
 #   VPUPlay   the test player: a decoder session into a Picasso96 screen or
 #             window (videocodec.library); the measurement rig of the display path
 #   VCGrab    the user's recorder: an RTG screen through the converter into the
@@ -14,15 +13,14 @@
 #             window on the Workbench, the code to copy from (shipped as source)
 #   VCShow    the image-call example: the smallest picture viewer (shipped as source)
 #
-# common/ is the tools' shared code: a VCHIQ service as Exec I/O
-# (vchiq_client.c), codecs and formats by name (vc_names.c), the debug-log
-# writer (debugport.c), the task, signal and timer a tool waits with
+# common/ is the tools' shared code: codecs and formats by name (vc_names.c),
+# the debug-log writer (debugport.c), the task, signal and timer a tool waits with
 # (waiter.c), ReadArgs() defaults (args.h), MD5 (md5.h).  The rigs' output
 # grammar is emu68-common's (Emu68Common::kv, <emu68test/kv.h>).
 # The examples link none of it.  The Picasso96 API headers (P96Develop) come
 # with the toolchain image.
 
-set(VCHIQ_TOOL_COMPILE_OPTIONS
+set(VIDEOCODEC_TOOL_COMPILE_OPTIONS
     -Os
     -Wall
     -Wextra
@@ -34,27 +32,20 @@ set(VCHIQ_TOOL_COMPILE_OPTIONS
 )
 
 add_library(tools_common STATIC
-    common/vchiq_client.c
     common/vc_names.c
     common/debugport.c
     common/waiter.c
     common/pixel_format.c
 )
 target_include_directories(tools_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/common)
-target_compile_options(tools_common PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(tools_common PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 # drv_timer and the string helpers from emu68-common
-target_link_libraries(tools_common PUBLIC vchiq_headers videocodec_headers Emu68Common::common Emu68Common::kv)
+target_link_libraries(tools_common PUBLIC videocodec_headers Emu68Common::common Emu68Common::kv)
 
 add_executable(VCInfo
     VCInfo.c
 )
-# the window layout (vchiq_core.h) for DUMP, and MMAL's values and wire format
-# (mmal.h, mmal_proto.h) for COMPONENTS: read-only, a diagnostic tool's privilege
-target_include_directories(VCInfo PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../vchiq/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../videocore/include
-)
-target_compile_options(VCInfo PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VCInfo PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_compile_definitions(VCInfo PRIVATE
     VERSTAG="$VER: VCInfo ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
 )
@@ -64,9 +55,6 @@ target_link_libraries(VCInfo PRIVATE tools_common)
 add_executable(VCTest
     vctest/vctest.c
     vctest/status.c
-    vctest/abandon.c
-    vctest/audio.c
-    vctest/ahi.c
     vctest/decode.c
     vctest/picture.c
     vctest/image.c
@@ -74,15 +62,9 @@ add_executable(VCTest
     vctest/encode.c
     vctest/screen.c
     vctest/hold.c
-    vctest/device.c
     vctest/probe.c
 )
-# the test-only command's number (vchiq/vchiq_test.h): a test rig's privilege; the AUDS wire format
-target_include_directories(VCTest PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../vchiq/include
-    ${VCHIQ_SHARED_DIR}/include
-)
-target_compile_options(VCTest PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VCTest PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_compile_definitions(VCTest PRIVATE
     VERSTAG="$VER: VCTest ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
 )
@@ -92,7 +74,7 @@ target_link_libraries(VCTest PRIVATE tools_common)
 add_executable(VPUPlay
     VPUPlay.c
 )
-target_compile_options(VPUPlay PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VPUPlay PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_compile_definitions(VPUPlay PRIVATE
     VERSTAG="$VER: VPUPlay ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
 )
@@ -109,7 +91,7 @@ add_executable(VCGrab
     vcgrab/mkv/mkv.c
     vcgrab/still.c
 )
-target_compile_options(VCGrab PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VCGrab PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_include_directories(VCGrab PRIVATE vcgrab/mkv) # the mkv-writer submodule
 target_compile_definitions(VCGrab PRIVATE
     VERSTAG="$VER: VCGrab ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
@@ -121,7 +103,7 @@ target_link_libraries(VCGrab PRIVATE tools_common amiga) # HotKey() lives in ami
 add_executable(VCPlay
     VCPlay.c
 )
-target_compile_options(VCPlay PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VCPlay PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_compile_definitions(VCPlay PRIVATE
     VERSTAG="$VER: VCPlay ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
 )
@@ -131,7 +113,7 @@ target_link_libraries(VCPlay PRIVATE videocodec_headers)
 add_executable(VCShow
     VCShow.c
 )
-target_compile_options(VCShow PRIVATE ${VCHIQ_TOOL_COMPILE_OPTIONS})
+target_compile_options(VCShow PRIVATE ${VIDEOCODEC_TOOL_COMPILE_OPTIONS})
 target_compile_definitions(VCShow PRIVATE
     VERSTAG="$VER: VCShow ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CURRENT_DATE}"
 )

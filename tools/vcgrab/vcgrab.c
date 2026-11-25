@@ -134,7 +134,7 @@ void grab_error(const char *what, LONG error)
 	if (error == VCERR_DEVMEM)
 		grab_say("%s: the VideoCore is out of memory, raise gpu_mem in config.txt", what);
 	else if (error == VCERR_TRANSPORT)
-		grab_say("%s: no link to the VideoCore, VCInfo says why", what);
+		grab_say("%s: no link to the VideoCore, VCHIQInfo says why", what);
 	else
 		grab_say("%s: error %ld", what, error);
 }

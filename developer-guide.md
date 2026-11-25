@@ -553,7 +553,7 @@ VPUPlay file [FPS n] [FAST] [FRAMES n] [DEPTH 16|24|32] [WIDTH n] [HEIGHT n] [VE
 ```
 
 The measurement rig of the display path, beside `VCTest` in `Developer/Tools`.
-It reads H.264 elementary streams only; users play video with MintVID (README,
+It reads H.264 elementary streams only; users play video with Kinora (README,
 Playing a video).
 
 Full screen it opens a Picasso96 screen three picture heights tall, imports the

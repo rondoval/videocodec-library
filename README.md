@@ -19,8 +19,8 @@ touching a pixel.
 ## What you get
 
 - **Hardware video.** The VideoCore decodes H.264 and MJPEG and scales each
-  picture to the screen. [A version of MintVID](#playing-a-video) plays 1080p
-  full screen at 30 fps with sound.
+  picture to the screen. [Kinora](#playing-a-video), the stack's own film
+  player, plays videos through it with their sound.
 - **Faster JPEG pictures in every program.** `vcjpeg.datatype` decodes large
   JPEGs on the VideoCore for MultiView, Workbench and anything else that loads
   pictures through datatypes.
@@ -99,16 +99,14 @@ It checks each part in turn, says what to fix, and ends with `PASS`.
 
 ## Playing a video
 
-[MintVID](https://github.com/boingball/MintVID) plays video files (MP4, MKV,
-AVI, MPEG-TS and more) with their sound. A version of it that hands H.264 and
-MJPEG to the VideoCore whenever `videocodec.library` is installed, and decodes
-the rest in software, is in the `videocore-decode` branch of
-[rondoval/MintVID](https://github.com/rondoval/MintVID). It has been offered
-to MintVID's author, so it may reach a MintVID release, later or not at all.
+[Kinora](https://github.com/rondoval/kinora), the stack's own film player,
+plays video files (Matroska, MP4 and QuickTime, MPEG transport streams) with
+their sound and subtitles, the pictures decoded through `videocodec.library`.
+Its README has what it plays and how to install it.
 
 The VideoCore takes 8-bit H.264 up to 1920x1080, or 1080x1920 upright, and
 keeps up with 1080p at 60 fps, and MJPEG up to 4096 wide and 1920 tall. Larger
-and 10-bit videos play in software, slowly. H.265 needs the stack's
+and 10-bit H.264 it refuses (error `-8`). H.265 needs the stack's
 `rpivid.codec`, on the HEVC block of a Pi 4 or CM4: its README has what it
 plays. Re-encode the rest on a PC (`scale=-2:1920` for an upright one):
 
@@ -247,7 +245,7 @@ unit's output volume in the AHI preferences sets the VideoCore's.
 | `VCInfo` says `cma.resource missing` | Add `dtoverlay=cma` to `config.txt`. |
 | The VideoCore connection does not come back after a reboot, or after `Avail FLUSH` during a video | Press Ctrl-Amiga-Amiga. If it still does not come back, power off and on. The firmware starts its side of the connection only once per Pi start, and it cannot always be taken over. |
 | Error `-8` as a video starts | The video is 10-bit, 4:2:2 or too large. Re-encode it (see [Playing a video](#playing-a-video)). |
-| Error `-2`, or MintVID plays a video slowly, in software | The VideoCore is out of memory: a second video, one with many reference frames, or a video during a recording. Close the other video, or set `gpu_mem=128` in `config.txt`; `VCInfo` shows what is free. |
+| Error `-2` as a video starts | The VideoCore is out of memory: a second video, one with many reference frames, or a video during a recording. Close the other video, or set `gpu_mem=128` in `config.txt`; `VCInfo` shows what is free. |
 | Colours banded on a 16-bit screen | The hardware does not dither. Play on a 24- or 32-bit screen. |
 | The VideoCore modes are missing from the AHI preferences | Reboot, or run `AddAudioModes REFRESH`. |
 

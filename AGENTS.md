@@ -77,7 +77,7 @@ From the component root:
    must build from the archive's `Developer/Examples/videocodec`.
 8. **The rigs print facts, the host judges them.** `tools/vctest/` and
    `tools/VPUPlay.c` speak the grammar of emu68-common's `<emu68test/kv.h>`; a test never
-   greps prose. VPUPlay is a measurement rig: users play video with MintVID.
+   greps prose. VPUPlay is a measurement rig: users play video with Kinora.
 9. **Test hooks only in test builds.** `vchiq/vchiq_test.h` commands exist only
    with `VCHIQ_TEST_HOOKS` (the stack's `EMU68_VCHIQ_TEST_HOOKS`, which the
    suite's build sets and no release does).

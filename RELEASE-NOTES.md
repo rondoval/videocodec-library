@@ -134,9 +134,7 @@ stays almost idle.
 ## What's in it
 
 - **Hardware video.** The VideoCore decodes H.264 and MJPEG and scales each
-  picture to the screen. A version of MintVID plays 1080p full screen at 30 fps
-  with sound. MintVID itself does not have this yet, and may never (README,
-  Playing a video).
+  picture to the screen.
 - **Faster JPEG pictures in every program.** `vcjpeg.datatype` decodes
   baseline JPEGs of about 2 megapixels and more for MultiView, Workbench and
   anything else that loads pictures through datatypes: twice as fast as

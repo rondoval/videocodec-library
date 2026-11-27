@@ -27,7 +27,10 @@ SFD = COMPONENT_DIR / "videocodec" / "sfd" / "videocodec.sfd"
 HEADER = COMPONENT_DIR / "videocodec" / "include" / "libraries" / "videocodec.h"
 SETTINGS = COMPONENT_DIR / "tools" / "vcgrab" / "settings.c"
 
-KNOWN_GAPS: dict[str, str] = {}   # item -> why no test covers it yet: none now
+KNOWN_GAPS: dict[str, str] = {   # item -> why no test covers it yet
+    "VCA_Skip": "the VideoCore's decoders ignore it; Kinora's suite covers it through ffmpegvideo.codec "
+                "(tests/hw/test_video.py), and a VCTest option for it is to come",
+}
 
 def library_functions() -> list[str]:
     """videocodec.library's functions, the TagList and Tags forms of a call as one name."""

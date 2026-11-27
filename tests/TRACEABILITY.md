@@ -2,7 +2,7 @@
 
 Written by the suite's host tier (`run.sh host` rewrites it): every item the suite must cover, with the tests that cover it.
 
-**Uncovered: 0** of 66 items; known gaps: 0.
+**Uncovered: 0** of 67 items; known gaps: 1.
 
 ## videocodec.library
 
@@ -56,6 +56,7 @@ Written by the suite's host tier (`run.sh host` rewrites it): every item the sui
 | VCA_Framed | `test_decoder.py::test_bit_exact_framed` |
 | VCA_Extradata | `test_decoder.py::test_extradata` |
 | VCA_ExtradataSize | `test_decoder.py::test_extradata` |
+| VCA_Skip | **known gap:** the VideoCore's decoders ignore it; Kinora's suite covers it through ffmpegvideo.codec (tests/hw/test_video.py), and a VCTest option for it is to come |
 | VCA_FrameRateNum | `test_decoder.py::test_bit_exact` |
 | VCA_FrameRateDen | `test_decoder.py::test_bit_exact` |
 | VCA_Bitrate | `test_encoder.py::test_h264_encode` |

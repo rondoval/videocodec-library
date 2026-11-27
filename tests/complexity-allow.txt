@@ -38,7 +38,7 @@ tools/vctest/picture.c:frame_to_file 16 0.6: as the code was when the gate came
 tools/vctest/screen.c:do_screen 18 0.6: as the code was when the gate came
 tools/vctest/vctest.c:main 16 0.6: as the code was when the gate came
 videocodec/src/videocodec_image.c:image_tag 19 0.6: as the code was when the gate came
-videocodec/src/videocodec_session.c:session_tag 32 0.6: as the code was when the gate came
+videocodec/src/videocodec_session.c:session_tag 33 0.6: as the code was when the gate came, and one more case for VCA_Skip in 0.7
 videocore/src/h264_sps.c:h264_sps_read 33 0.6: as the code was when the gate came
 videocore/src/session_formats.c:format_bytes_per_pixel 25 0.6: as the code was when the gate came
 videocore/src/session_formats.c:format_encoding 21 0.6: as the code was when the gate came

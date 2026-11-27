@@ -13,6 +13,11 @@
   (Emu68, `vchiq.device`, the firmware, `gpu_mem`, throttling) it sends you to
   the driver stack's `VCHIQInfo`, which takes over `GCMD` and `DUMP`.
   `COUNTERS` shows the codec drivers' counters. `COMPONENTS` is gone.
+- **Decoders that fall behind can skip pictures.** A new tag, `VCA_Skip`, lets
+  a player ask a decoder to leave out the pictures no other picture is decoded
+  from, or all but the key frames, while it cannot keep up. Kinora's software
+  decoder (`ffmpegvideo.codec`) honours it; the VideoCore's decoders keep up
+  and ignore it. Codec drivers see it in the backend interface 1.2.
 - **For developers:** the repository builds inside Kinora (`./build.sh` in
   Kinora's root), and its CI is Kinora's. The test suite's Python package is
   `videocodectest`, installed to `share/videocodec-testing/`; `VCTest` has no

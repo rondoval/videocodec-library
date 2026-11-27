@@ -319,6 +319,11 @@ typedef long long VCTime; /* a timestamp in microseconds */
 #define VCCS_JPEG 3       /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
 #define VCCS_BT709_Full 4 /* BT.709, full range */
 
+/* What a decoder may leave out (VCA_Skip) */
+#define VCSK_None 0         /* every picture */
+#define VCSK_NonReference 1 /* the pictures no other is decoded from (B-pictures) */
+#define VCSK_NonKey 2       /* all but the key frames */
+
 /* Rate control (VCA_RateControl) */
 #define VCRC_Default 0
 #define VCRC_VBR 1 /* variable bit rate: VCA_Bitrate is the average */
@@ -581,6 +586,12 @@ struct VCSession; /* opaque */
 #define VCA_Framed (VCA_Base + 20)        /* BOOL: each packet holds whole pictures, marked VCPF_FrameStart/End [FALSE: any chunks] */
 #define VCA_Extradata (VCA_Base + 29)     /* APTR: codec configuration (H.264 SPS/PPS, Annex-B) when not in the stream; read by the open only.  The open refuses a stream the hardware has no memory for (VCERR_DEVMEM); without it the first packet does */
 #define VCA_ExtradataSize (VCA_Base + 30) /* its bytes */
+/*
+ * VCA_Skip: pictures a decoder that falls behind may leave out, not decoded and not handed out,
+ * so the client gets fewer pictures (new in 0.7; also with VC_SetAttrsTags()).  A hint: a
+ * decoder that cannot skip (the hardware ones) ignores it, and VC_SetAttrsTags() succeeds.
+ */
+#define VCA_Skip (VCA_Base + 41) /* VCSK_* [VCSK_None] */
 
 /* Encoder (VCA_Bitrate and VCA_RequestKeyFrame also with VC_SetAttrsTags() while running) */
 #define VCA_FrameRateNum (VCA_Base + 21)    /* frame rate of the input; a framed decoder assumes it too [unknown] */

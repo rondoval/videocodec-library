@@ -38,7 +38,8 @@ static void set_rect(struct VCRect *rect, ULONG *have, ULONG value)
  * @value:  its value
  *
  * Tags a running session can take (the output geometry, the bit rate, a
- * key-frame request) also set their VCSPF_* bit in @params->Changed.  Any
+ * key-frame request, what a decoder may skip) also set their VCSPF_* bit in
+ * @params->Changed.  Any
  * other tag is ignored, as tag lists allow: VCA_Backend and VCA_ErrorPtr are
  * the open's own, the codec configuration session_parse()'s.
  */
@@ -120,9 +121,13 @@ static void session_tag(struct VCSessionParams *params, Tag tag, ULONG value)
 		params->OutputSize = value;
 		break;
 
-	/* decoder */
+	/* decoder; what it may leave out also while running */
 	case VCA_Framed:
 		params->Framed = value != 0;
+		break;
+	case VCA_Skip:
+		params->Skip = value;
+		params->Changed |= VCSPF_Skip;
 		break;
 
 	/* encoder; the bit rate and a key-frame request also while running */
@@ -472,12 +477,50 @@ LONG VC_Flush(struct VCSession *session asm("a0"), struct VideoCodecBase *base a
 }
 
 /**
+ * nothing_to_change() - Whether a parsed VC_SetAttrsTagList() asks a backend for nothing.
+ * @params: the parsed change
+ *
+ * Return: TRUE with no change marked and no new signal.
+ */
+static BOOL nothing_to_change(const struct VCSessionParams *params)
+{
+	return params->Changed == 0 && params->SigMask == 0 && params->SigTask == NULL;
+}
+
+/**
+ * skip_set() - Pass what the decoder may leave out (VCA_Skip) to the decoder's backend alone.
+ * @session: the session
+ * @skip:    VCSK_*
+ *
+ * A hint: a backend that cannot skip answers VCERR_UNSUPPORTED (or knows no
+ * Skip, an ABI 1.1 one), and the change counts as made.  A chain's
+ * converter has nothing to skip.  A call of its own, because a backend
+ * answers one error for the whole change: mixed with other changes, an
+ * UNSUPPORTED could not be told apart from a real refusal.
+ *
+ * Return: 0, or the backend's other error.
+ */
+static LONG skip_set(struct VCSession *session, ULONG skip)
+{
+	struct Library *VCBackendBase = session->backend->library;
+	struct VCSessionParams change;
+	memset(&change, 0, sizeof(change));
+	change.Size = sizeof(change);
+	change.Changed = VCSPF_Skip;
+	change.Skip = skip;
+	LONG err = VCB_SetAttrs(session->handle, &change);
+	return err == VCERR_UNSUPPORTED ? 0 : err;
+}
+
+/**
  * VC_SetAttrsTagList() - Change a running session (LVO).
  * @session: the session
- * @tags:    the output geometry, VCA_Bitrate or VCA_RequestKeyFrame; others are ignored
+ * @tags:    the output geometry, VCA_Bitrate, VCA_RequestKeyFrame or VCA_Skip; others are ignored
  * @base:    the library base (A6)
  *
  * Only tags marked in Changed reach the backend; a list with none is a no-op.
+ * VCA_Skip goes to the decoder by itself (skip_set()), the rest after it:
+ * in a chain to the converter, the decoder getting only the signal.
  *
  * Return: 0, or a VCERR_*.
  */
@@ -492,7 +535,13 @@ LONG VC_SetAttrsTagList(struct VCSession *session asm("a0"), struct TagItem *tag
 	params.Size = sizeof(params);
 
 	LONG err = session_parse(base, tags, &params, FALSE);
-	if (err != 0 || (params.Changed == 0 && params.SigMask == 0 && params.SigTask == NULL))
+	/* Skip is the decoder's: a chain would send it to the converter, and its UNSUPPORTED is dropped */
+	if (err == 0 && (params.Changed & VCSPF_Skip) != 0)
+	{
+		err = skip_set(session, params.Skip);
+		params.Changed &= ~VCSPF_Skip; /* done; the rest go to the backend below */
+	}
+	if (err != 0 || nothing_to_change(&params))
 		return err;
 	return session->chain != NULL ? chain_set_attrs(session, &params) : VCB_SetAttrs(session->handle, &params);
 }

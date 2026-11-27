@@ -115,8 +115,16 @@ decoder or converter keeps the samples as they are, whatever the tag.
   with `VCA_KeepAspect` the picture keeps the place the first shape's aspect
   gave it.
 * **Changing a running session.** `VC_SetAttrsTags()` takes the output
-  geometry tags, `VCA_Bitrate` and `VCA_RequestKeyFrame`. A geometry change
-  replaces that side's objects: old pointers are invalid, re-import yours.
+  geometry tags, `VCA_Bitrate`, `VCA_RequestKeyFrame` and `VCA_Skip`. A
+  geometry change replaces that side's objects: old pointers are invalid,
+  re-import yours.
+* **Falling behind.** `VCA_Skip` (new in 0.7) lets a decoder leave pictures
+  out, neither decoded nor handed out: `VCSK_NonReference` the ones no other
+  picture is decoded from (B-pictures), `VCSK_NonKey` all but the key frames,
+  `VCSK_None` none again. A player that drops pictures because they come late
+  sets it, since dropping a picture saves its showing but not its decoding.
+  It is a hint: the VideoCore's and the HEVC block's decoders keep up and
+  ignore it, and the call succeeds.
 * **Seeking.** `VC_Flush()` drops everything the session holds: the input
   packets come back unused, and no frame from before the flush reaches you
   after it, those inside the hardware's pipeline included. Then send the

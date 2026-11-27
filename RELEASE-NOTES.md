@@ -18,6 +18,15 @@
   from, or all but the key frames, while it cannot keep up. Kinora's software
   decoder (`ffmpegvideo.codec`) honours it; the VideoCore's decoders keep up
   and ignore it. Codec drivers see it in the backend interface 1.2.
+- **A program can tell which codec driver decodes.** Two new tags,
+  `VCA_BackendName` and `VCA_ConverterName`, have a session's open write the
+  name of the codec driver it went to and of the one whose converter stands
+  behind a decoder. Kinora's statistics show them.
+- **Pictures of any width convert to RGB.** A converter, or a decoder with one
+  behind it, asked for RGB without a size or a pitch took the picture's own width
+  for its rows, and refused a width that is not whole groups of 32 pixels (a
+  720-pixel-wide film, say). The rows are rounded up by themselves now, as they
+  were for YUV.
 - **For developers:** the repository builds inside Kinora (`./build.sh` in
   Kinora's root), and its CI is Kinora's. The test suite's Python package is
   `videocodectest`, installed to `share/videocodec-testing/`; `VCTest` has no

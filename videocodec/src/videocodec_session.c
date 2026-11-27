@@ -40,8 +40,9 @@ static void set_rect(struct VCRect *rect, ULONG *have, ULONG value)
  * Tags a running session can take (the output geometry, the bit rate, a
  * key-frame request, what a decoder may skip) also set their VCSPF_* bit in
  * @params->Changed.  Any
- * other tag is ignored, as tag lists allow: VCA_Backend and VCA_ErrorPtr are
- * the open's own, the codec configuration session_parse()'s.
+ * other tag is ignored, as tag lists allow: VCA_Backend, VCA_ErrorPtr and the
+ * names (names_tell()) are the open's own, the codec configuration
+ * session_parse()'s.
  */
 static void session_tag(struct VCSessionParams *params, Tag tag, ULONG value)
 {
@@ -307,6 +308,27 @@ static struct Library *session_backend(const struct VCSession *session)
 /* ---- the library's functions: libraries/videocodec.h documents what each does ------------- */
 
 /**
+ * names_tell() - Write the names of a session's backends where the open's tags ask for them.
+ * @session: the session just opened, or NULL when the open failed
+ * @tags:    the open's tags
+ * @base:    the library base
+ *
+ * VCA_BackendName gets the backend serving the session, VCA_ConverterName
+ * that of the converter behind a decoder (chain_converter_name()); a failed
+ * open writes empty names.
+ */
+static void names_tell(const struct VCSession *session, struct TagItem *tags, struct VideoCodecBase *base)
+{
+	struct Library *UtilityBase = base->UtilityBase;
+	char *backend = (char *)GetTagData(VCA_BackendName, 0, tags);
+	char *converter = (char *)GetTagData(VCA_ConverterName, 0, tags);
+	if (backend != NULL)
+		strlcpy(backend, session != NULL ? session->backend->name : "", VC_BACKEND_NAME_SIZE);
+	if (converter != NULL)
+		strlcpy(converter, session != NULL ? chain_converter_name(session) : "", VC_BACKEND_NAME_SIZE);
+}
+
+/**
  * VC_OpenSessionTagList() - Open a session (LVO).
  * @tags: the session's tags
  * @base: the library base (A6)
@@ -325,6 +347,7 @@ struct VCSession *VC_OpenSessionTagList(struct TagItem *tags asm("a0"), struct V
 	LONG *errp = (LONG *)GetTagData(VCA_ErrorPtr, 0, tags);
 	if (errp != NULL)
 		*errp = err;
+	names_tell(session, tags, base);
 	return session;
 }
 

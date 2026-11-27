@@ -68,7 +68,6 @@
 #define LIBRARY_PRIORITY 0
 #endif
 
-#define VC_BACKEND_NAME_MAX 32                  /* a backend's file name, NUL included */
 #define VC_FALLBACK_BACKEND "videocore.codec"   /* opened by name when the drawer cannot be scanned (a Task opener) */
 #define VC_SESSION_MAGIC 0x56435345u            /* 'VCSE': marks a live struct VCSession */
 
@@ -80,7 +79,7 @@ struct vc_backend
 	struct VCCodecInfo *caps;       /* its codec table as it gave it (AllocVec); NULL if empty */
 	ULONG ncaps;                    /* rows in caps */
 	ULONG abi;                      /* VCInfo.ABIVersion as it reported it */
-	char name[VC_BACKEND_NAME_MAX]; /* its file name in LIBS:videocodec/ */
+	char name[VC_BACKEND_NAME_SIZE]; /* its file name in LIBS:videocodec/ */
 };
 
 struct vc_chain; /* a converter behind a decoder: videocodec_chain.c's own */
@@ -134,6 +133,7 @@ struct vc_chain *chain_open(struct VideoCodecBase *base, struct VCSessionParams 
 /* VCCodecInfo.ChainOutputFormats of a backend's row: what a chain behind its sessions adds; base->lock held */
 ULONG chain_output_formats(struct VideoCodecBase *base, const struct vc_backend *decoder, const struct VCCodecInfo *row);
 void chain_close(struct VideoCodecBase *base, struct VCSession *session); /* the converter and the chain; before the decoder's close */
+const char *chain_converter_name(const struct VCSession *session); /* the converter's backend, "" without a chain */
 LONG chain_poll(struct VCSession *session, struct VCItem *item);
 struct VCFrame *chain_import_frame(struct VCSession *session, APTR data); /* an output frame: the converter's */
 void chain_release_frame(struct VCSession *session, struct VCFrame *frame);

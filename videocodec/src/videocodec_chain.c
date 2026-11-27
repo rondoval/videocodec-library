@@ -210,6 +210,17 @@ struct vc_chain *chain_open(struct VideoCodecBase *base, struct VCSessionParams 
 	return chain;
 }
 
+/**
+ * chain_converter_name() - The name of the backend whose converter stands behind a session's decoder.
+ * @session: the session
+ *
+ * Return: the name, "" for a session without a chain.
+ */
+const char *chain_converter_name(const struct VCSession *session)
+{
+	return session->chain != NULL ? session->chain->converter_backend->name : "";
+}
+
 /* ---- the decoder -------------------------------------------------------------------- */
 
 /**

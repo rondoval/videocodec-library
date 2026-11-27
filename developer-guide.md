@@ -306,7 +306,12 @@ gets what the first cannot do. When no row takes them, the best row gets the
 call anyway and refuses it with its own error. Pass
 `VCA_Backend` with a row's `Backend` name (with or without `.codec`) to pick
 one yourself. No row, no backend: `VCERR_NOBACKEND` (a session for a still
-picture's codec, say).
+picture's codec, say). To learn what a session went to, give the open
+room for `VC_BACKEND_NAME_SIZE` bytes with `VCA_BackendName` (new in 0.7): it
+writes the backend's name there, as `Backend` has it; a decoder's open writes
+the name of the converter's backend behind it at `VCA_ConverterName`, an empty
+name when there is none. A failed open writes empty names. A player says with
+them what decodes its film.
 
 **FourCCs.** A container names its codec by a FourCC: AVI's
 `biCompression`, an MP4 or QuickTime sample entry, Matroska's

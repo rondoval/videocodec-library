@@ -2,7 +2,7 @@
 
 Written by the suite's host tier (`run.sh host` rewrites it): every item the suite must cover, with the tests that cover it.
 
-**Uncovered: 0** of 67 items; known gaps: 1.
+**Uncovered: 0** of 69 items; known gaps: 1.
 
 ## videocodec.library
 
@@ -38,6 +38,8 @@ Written by the suite's host tier (`run.sh host` rewrites it): every item the sui
 | VCA_SigTask | `test_decoder.py::test_bit_exact` |
 | VCA_ErrorPtr | `test_decoder.py::test_bit_exact` |
 | VCA_Backend | `test_decoder.py::test_backend_named` |
+| VCA_BackendName | `test_decoder.py::test_bit_exact` |
+| VCA_ConverterName | `test_decoder.py::test_bit_exact`, `test_decoder.py::test_chained_output` |
 | VCA_Width | `test_encoder.py::test_h264_encode` |
 | VCA_Height | `test_encoder.py::test_h264_encode` |
 | VCA_InputFormat | `test_encoder.py::test_h264_encode` |

@@ -171,7 +171,8 @@
  * - A session goes to the backend whose VC_QueryCodec() row for its codec
  *   and kind has the highest Priority (hardware above software; per codec,
  *   so one backend may be hardware for one codec and software for another),
- *   unless VCA_Backend names one.
+ *   unless VCA_Backend names one.  VCA_BackendName and VCA_ConverterName
+ *   have the open say which it went to.
  * - A decoder asked for an output format its row does not write gets a
  *   converter behind it, inside the same session: the decoder runs natively,
  *   the converter (opened when the stream's shape is known) makes your
@@ -194,6 +195,7 @@
 /* Backends: LIBS:videocodec/<name>.codec (writing one: libraries/videocodec_backend.h) */
 #define VIDEOCODEC_BACKEND_DRAWER "videocodec"
 #define VIDEOCODEC_BACKEND_SUFFIX ".codec"
+#define VC_BACKEND_NAME_SIZE 32 /* a backend's file name with its NUL: VCCodecInfo.Backend, VCA_BackendName */
 
 typedef long long VCTime; /* a timestamp in microseconds */
 #define VC_TIME_UNKNOWN ((VCTime)1 << 63)
@@ -454,7 +456,7 @@ struct VCCodecInfo
 	ULONG MaxWidth, MaxHeight;
 	ULONG MaxLevel;    /* H.264 level times ten (42 = 4.2): the highest it keeps up with at the level's rates; 0 unknown */
 	ULONG OutputFormats; /* VCF_MASK() of each VCF_* a decoder or converter writes; 0 for an encoder */
-	UBYTE Backend[32]; /* the backend's name, for VCA_Backend */
+	UBYTE Backend[VC_BACKEND_NAME_SIZE]; /* the backend's name, for VCA_Backend */
 	LONG Priority;     /* 50 hardware, 0 software (VCB_PRIORITY_*): the row of the highest gets the session */
 	ULONG Flags;       /* VCCF_*: what the row serves */
 	ULONG InputFormats; /* VCF_MASK() of each VCF_* an encoder or converter reads, others refused; 0 for a decoder */
@@ -485,7 +487,7 @@ struct VCInfo
 {
 	ULONG Size;       /* set it to sizeof(struct VCInfo) before the call */
 	ULONG ABIVersion; /* of the backend interface */
-	UBYTE Backend[32];
+	UBYTE Backend[VC_BACKEND_NAME_SIZE];
 	ULONG Sessions;             /* open now */
 	UBYTE Interface[32];        /* the hardware's own interface and its version while one is open ("MMAL 0.2"), else empty */
 	struct VCCounter *Counters; /* in: room for MaxCounters, or NULL */
@@ -534,6 +536,9 @@ struct VCSession; /* opaque */
 #define VCA_SigTask (VCA_Base + 18)  /* struct Task * to signal [the opener]; also with VC_SetAttrsTags(), to hand the session to another task */
 #define VCA_ErrorPtr (VCA_Base + 32) /* LONG *: gets the VCERR_* when an open or an image call fails */
 #define VCA_Backend (VCA_Base + 31)  /* STRPTR: this backend, by its VCCodecInfo.Backend name, with or without .codec [the one with the codec's highest-priority row] */
+/* What the open chose (new in 0.7): room for VC_BACKEND_NAME_SIZE bytes each, which the open fills, an empty name when it fails */
+#define VCA_BackendName (VCA_Base + 42)   /* UBYTE *: gets the name of the backend serving the session, as VCCodecInfo.Backend has it */
+#define VCA_ConverterName (VCA_Base + 43) /* UBYTE *: a decoder's open: gets the name of the converter's backend put behind it, empty for none */
 
 /* Input pictures: encoder, converter */
 #define VCA_Width (VCA_Base + 3)       /* pixels; for a decoder, what imported native frames are checked against */
@@ -552,7 +557,7 @@ struct VCSession; /* opaque */
 #define VCA_OutputFormat (VCA_Base + 7) /* VCF_* [decoder: I420 at the stream's size, no scaling] */
 #define VCA_OutputWidth (VCA_Base + 8)  /* pixels [the source's] */
 #define VCA_OutputHeight (VCA_Base + 9) /* rows [the source's] */
-#define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel] */
+#define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel, rounded up to the backend's row: the VideoCore's whole groups of 32 pixels] */
 /*
  * VCA_DestRect: where the picture goes in the frame, and how large.  A place
  * other than the frame's top left needs a packed pixel format (the planes of

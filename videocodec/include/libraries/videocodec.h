@@ -143,7 +143,8 @@
  * - Every buffer is a VCPacket or VCFrame object of one session.  Each side
  *   has a fixed set: the library's own (counted and sized by the buffer tags)
  *   or your memory, imported with VC_ImportPacket()/VC_ImportFrame() before
- *   the first send.
+ *   the first send.  A backend need not take imports: both then return NULL,
+ *   as they do when memory is short, and the library's own objects serve.
  * - Input: you get an empty object as a VCIT_PacketReturned or
  *   VCIT_FrameReturned item, fill it, send it; it is the library's until it
  *   comes back the same way once used.  Output: you get a full object as a VCIT_Frame or VCIT_Packet

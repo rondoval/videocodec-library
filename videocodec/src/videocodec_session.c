@@ -370,7 +370,7 @@ VOID VC_CloseSession(struct VCSession *session asm("a0"), struct VideoCodecBase 
  * @capacity: its size in bytes
  * @base:     the library base (A6)
  *
- * Return: the packet object, or NULL.
+ * Return: the packet object; NULL when the backend takes no imports or memory is short.
  */
 struct VCPacket *VC_ImportPacket(struct VCSession *session asm("a0"), ULONG side asm("d0"), APTR data asm("a1"),
                                  ULONG capacity asm("d1"), struct VideoCodecBase *base asm("a6"))
@@ -387,7 +387,8 @@ struct VCPacket *VC_ImportPacket(struct VCSession *session asm("a0"), ULONG side
  * @data:    the memory, of the session's picture geometry for that side
  * @base:    the library base (A6)
  *
- * Return: the frame object, or NULL.
+ * Return: the frame object; NULL when the backend (for output frames behind a
+ * converter, the converter) takes no imports, or memory is short.
  */
 struct VCFrame *VC_ImportFrame(struct VCSession *session asm("a0"), ULONG side asm("d0"), APTR data asm("a1"),
                                struct VideoCodecBase *base asm("a6"))

@@ -100,7 +100,9 @@ decoder or converter keeps the samples as they are, whatever the tag.
 * **Objects.** Each side is a fixed set of `struct VCPacket` or `struct VCFrame`
   objects: the library's own (sized by `VCA_InputCount`/`InputSize`/
   `OutputCount`/`OutputSize`) or your memory, imported with
-  `VC_ImportPacket()` / `VC_ImportFrame()` before the first send. Input
+  `VC_ImportPacket()` / `VC_ImportFrame()` before the first send. A backend
+  need not take imports: both then return NULL, as they do when memory is
+  short, and the library's own objects serve. Input
   objects come to you empty as `VCIT_PacketReturned`/`VCIT_FrameReturned`,
   you fill and send them; output objects come full as `VCIT_Frame`/
   `VCIT_Packet`, you use and release them. Nothing is copied.

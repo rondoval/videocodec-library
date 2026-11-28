@@ -10,7 +10,7 @@ import trace_items as items
 
 pytestmark = pytest.mark.gates
 
-FOLDERS = ("vchiq", "videocodec", "videocore", "ahi", "datatype", "shared", "tools", "tests/swconv")
+FOLDERS = ("videocodec", "videocore", "datatype", "shared", "tools", "tests/swconv")
 SUBMODULE = "mkv"                  # tools/vcgrab/mkv
 INHERITED = "0.6:"                 # the reason of a ceiling the 0.6 code set
 COMPLEXITY_LIMIT = 15              # without an entry in complexity-allow.txt (the harness says 10)

@@ -1,17 +1,21 @@
-# emu68-vchiq-library
+# videocodec-library
 
-Lets 68k code use the VideoCore VPU firmware. The stack-wide rules in the
-superbuild's `AGENTS.md` apply (container builds only, `__NOLIBBASE__` with a
-local `SysBase` in freestanding code, C99 declarations at first use, zero
-warnings, the user owns git).
+Lets 68k code use the VideoCore VPU firmware's codecs through one API. Kinora
+builds and ships it (its submodule `external/videocodec-library`), and the rules
+of Kinora's `AGENTS.md` apply (container builds only, zero warnings, the user
+owns git), with `__NOLIBBASE__` and a local `SysBase` in freestanding code and
+C99 declarations at first use.
 
 | Binary | Source | Installed in | What it is |
 |---|---|---|---|
-| `vchiq.device` | `vchiq/` | `DEVS:` | the VCHIQ transport, one unit per service |
 | `videocodec.library` | `videocodec/` | `LIBS:` | the public codec API; knows no hardware |
 | `videocore.codec` | `videocore/` | `LIBS:videocodec/` | the MMAL backend |
-| `videocore.audio` | `ahi/` | `DEVS:AHI/`, mode file `DEVS:AudioModes/VIDEOCORE` | AHI sub-driver on the firmware's `AUDS` service |
 | `vcjpeg.datatype` | `datatype/` | `SYS:Classes/DataTypes/`, descriptor `SYS:Storage/DataTypes/VCJPEG` | `picture.datatype` subclass; its descriptor is added from `S:User-Startup`, after the system's |
+
+`vchiq.device`, the transport under `videocore.codec`, is the Emu68 driver
+stack's (`emu68-vchiq-driver`), and so is `VCHIQInfo`, its link check: never
+copy its code or private headers here. Its public header, `devices/vchiq.h`,
+comes with the toolchain image.
 
 ## Docs
 
@@ -21,32 +25,33 @@ Each document has one reader; put new text where its reader looks.
 |---|---|---|
 | `docs/architecture.md` | whoever changes the design | how it works and why, and the firmware's limits as design rules. Read it before touching protocol code. |
 | `docs/firmware-facts.md` | whoever touches the firmware path | what the firmware does, as measured, and the sources. New measurements go here. |
-| `developer-guide.md` | people using or working on the component | the API, backend ABI, tools, building, the test suite |
+| `developer-guide.md` | people using or working on the libraries | the API, backend ABI, tools, building, the test suite |
 | `README.md`, `RELEASE-NOTES.md` | end users | installing and using it; the current release only |
 | this file | agents | what must not break; no history, no how-it-works |
 
 ## Build and validate
 
-From the stack root, `./scripts/docker-build.sh --target emu68-vchiq-library`
-or `./build.sh --build`. Zero warnings.
+From Kinora's root, `./build.sh` (Kinora's `scripts/docker-build.sh`: emu68-common,
+then this repository in `build/videocodec-library`, installed into
+`build/video-prefix`, then rpivid-codec and Kinora). Zero warnings.
+`./build.sh --install` fills Kinora's `install/`, which the suite installs from.
 
-From the component root:
+From this repository's root:
 
-- After any change to C or to the tests: `tests/run.sh host` (no Amiga, seconds): vchiqtest's own tests, the code gates over all of the component's C (kernel-doc on every function, cyclomatic complexity at most 15; `tests/complexity-allow.txt` holds the 0.6 code's exceptions at a ceiling that only goes down, a new entry 20 at most with a reason) and traceability (`tests/TRACEABILITY.md`, rewritten each run: every library function, device command, tag and VCGrab settings key with the tests that cover it, or as a known gap in `tests/gates/trace_items.py`). A new function needs its kernel-doc, a new library function, device command, tag or settings key a test that covers it. The suite builds on
-  emu68-common's harness (`emu68test`, from the stack's install tree): shared test code
-  belongs there, the VideoCore part in `tests/vchiqtest/`, which the build installs for the
-  codec backends' suites.
+- After any change to C or to the tests: `tests/run.sh host` (no Amiga, seconds): videocodectest's own tests, the code gates over all of the repository's C (kernel-doc on every function, cyclomatic complexity at most 15; `tests/complexity-allow.txt` holds the 0.6 code's exceptions at a ceiling that only goes down, a new entry 20 at most with a reason) and traceability (`tests/TRACEABILITY.md`, rewritten each run: every library function, tag and VCGrab settings key with the tests that cover it, or as a known gap in `tests/gates/trace_items.py`). A new function needs its kernel-doc, a new library function, tag or settings key a test that covers it. The suite builds on
+  emu68-common's harness (`emu68test`, from Kinora's `build/emu68-prefix`): shared test
+  code belongs there, the video part in `tests/videocodectest/`, which the build installs
+  for the codec backends' suites (`share/videocodec-testing/`).
 - On the hardware: `tests/run.sh -m smoke` after a change, the
   full suite before a release, on the suite's build flavour (developer-guide
   8.2). The machines are shared: the user runs these or says when to. Stop your
   own serial capture and anything polling the Amiga's agent first; the suite
   needs both to itself.
-- Report the installed files a run replaces (`DEVS:vchiq.device`,
-  `LIBS:videocodec.library`, `LIBS:videocodec/videocore.codec`, `C:VCInfo`,
-  `SYS:Tools/Commodities/VCGrab` and its icon, `DEVS:AHI/videocore.audio`,
-  `DEVS:AudioModes/VIDEOCORE`, `SYS:Classes/DataTypes/vcjpeg.datatype`,
-  `SYS:Storage/DataTypes/VCJPEG`) and
-  whether `baselines.json` changed.
+- Report the installed files a run replaces (`LIBS:videocodec.library`,
+  `LIBS:videocodec/videocore.codec`, `C:VCInfo`,
+  `SYS:Tools/Commodities/VCGrab` and its icon,
+  `SYS:Classes/DataTypes/vcjpeg.datatype`, `SYS:Storage/DataTypes/VCJPEG`) and
+  whether `baselines.json` changed. `vchiq.device` is never replaced here.
 
 ## Rules
 
@@ -54,10 +59,10 @@ From the component root:
    (mkv-writer) comes from libvpx's BSD libmkv and keeps its notice.
 2. **Layering.** The frontend includes no vchiq or MMAL header (its CMake gives
    it none). The backend parses no tags (it gets `struct VCSessionParams`).
-   `videocore/`, `ahi/` and the tools include only `devices/vchiq.h` of
-   `vchiq/` (VCInfo's window dump and MMAL inventory, and VCTest's
-   `vchiq/vchiq_test.h`, excepted). `datatype/` includes only
-   `libraries/videocodec.h` and the shared `image_info.h`, like a program.
+   Of the device, `videocore/` and `tools/vctest/` include only
+   `devices/vchiq.h`; `VCInfo` calls `videocodec.library` only. `datatype/`
+   includes only `libraries/videocodec.h` and the shared `image_info.h`, like a
+   program.
 3. **The ABIs are append-only.** New structure fields at the end behind `Size`,
    new functions at the end of the SFD; either bumps `VCB_ABI_VERSION_MINOR`. A
    reader checks the peer's `Size` with `VC_HAS_FIELD()` before reading a later
@@ -65,33 +70,28 @@ From the component root:
 4. **No payload copies.** Input objects are sent by reference, output objects
    written by the hardware in place. Zero copy is the MMAL client's decision per
    port at `mmal_port_attach()`, never the session layer's.
-5. **One version for the component**, set in the root `CMakeLists.txt`; each
+5. **One version for the repository**, set in the root `CMakeLists.txt`; each
    binary takes `${CMAKE_PROJECT_VERSION}`. No source, header fallback or SFD
    `==id` carries a number. Protocol versions (VCHIQ, MMAL, `VCB_ABI_VERSION`)
    are separate.
 6. **Functions carry kernel-doc comments** (summary, every parameter,
    `Return:`). Documents stay ASCII.
 7. **`tools/VCPlay.c` and `tools/VCShow.c` are the examples third parties
-   copy:** no instrumentation, no options, nothing of the stack but the
-   library's headers. They ship as source (with `tools/examples.readme`) and
+   copy:** no instrumentation, no options, nothing but the library's headers. They ship as source (with `tools/examples.readme`) and
    must build from the archive's `Developer/Examples/videocodec`.
 8. **The rigs print facts, the host judges them.** `tools/vctest/` and
    `tools/VPUPlay.c` speak the grammar of emu68-common's `<emu68test/kv.h>`; a test never
    greps prose. VPUPlay is a measurement rig: users play video with Kinora.
-9. **Test hooks only in test builds.** `vchiq/vchiq_test.h` commands exist only
-   with `VCHIQ_TEST_HOOKS` (the stack's `EMU68_VCHIQ_TEST_HOOKS`, which the
-   suite's build sets and no release does).
-10. **Tests are pytest functions in `tests/`** (developer-guide 8.7): inputs from
-    fixtures, never from another test's side effects; temporary files in
-    `RAM:hw` only; measured numbers through `baselines.check_near()`; every module
-    ends in `test_nothing_left`.
+9. **Tests are pytest functions in `tests/`** (developer-guide 8.7): inputs from
+   fixtures, never from another test's side effects; temporary files in
+   `RAM:hw` only; measured numbers through `baselines.check_near()`; every module
+   ends in `test_nothing_left`.
 
 ## The firmware: what never to do
 
 Each of these has happened. The firmware refuses almost nothing, and most of
-these leave it dead until a Pi restart (architecture.md section 9).
+these leave it dead until a Pi restart (architecture.md section 7).
 
-- Never send a second init tag: the VPU answers `0xFFFFFFFF` and never takes it.
 - Never flush the decoder's end of an opaque (`OPQV`) tunnel: the VPU's MMAL
   service dies. Flush its ISP end.
 - Never close or fail the image decoder mid-picture: MMAL stays dead. Every
@@ -115,37 +115,13 @@ these leave it dead until a Pi restart (architecture.md section 9).
 What a change must not break, per binary. The reasons are in
 `docs/architecture.md`, in the sections named.
 
-### vchiq.device (sections 3, 4)
-
-- Every window access goes through `le32()`/`le16()` on `volatile` pointers. No
-  cache maintenance on the slot area; `cache_pre_dma()`/`cache_post_dma()` on
-  bulk payloads and on imported buffers only.
-- vchiq must stay the first `cma.resource` client after a reset: otherwise the
-  window moves while the VPU still writes the old one.
-- The window's record outlives a VPU restart, so `vchiq_connect()` trusts it
-  only after the VPU has answered on it (`probe_alive()`). The session API is
-  `vchiq_connect()` and `vchiq_shutdown()`; the steps stay private to
-  `vchiq_session.c`.
-- Every ring access is under `base->lock` and inside `vchiq_ring_enter()` /
-  `vchiq_ring_leave()`. The reset path cannot lock: it reads the busy count.
-- The reset guard cannot `Wait()`: it clears `ctx->timer` and spins.
-- `videocore.codec`'s reset guard must run before the device's: a service's close
-  leaves its components on the VPU, and the next `SMEM` open then hangs the link
-  (`sessions_reset()`). It goes in after the service opens and out before it closes.
-- `BeginIO` only queues on the unit and kicks the task; only the task's round
-  touches the ring. The device never calls into a client or waits for one:
-  replies are `ReplyMsg()`s.
-- Never merge `sendq` (writes and bulk transmits) and `bulkreadq` (bulk
-  receives), and keep each in order: a message and its bulk must never be
-  reordered.
-- OpenDevice and CloseDevice wait through `drv_wait_event()` with the lock
-  released, on a signal bit of their own, never `SIGF_SINGLE`. A close never
-  gives up while the VPU makes progress.
-- SoC differences live in `struct vchiq_platform` only.
-
-### videocore.codec (section 6)
+### videocore.codec (sections 3, 5)
 
 - Lock order: `image_lock`, `session_lock`, `mmal_lock`.
+- Its reset guard must run before the device's: a service's close leaves its
+  components on the VPU, and the next `SMEM` open then hangs the link
+  (`sessions_reset()`). It goes in after the service opens and out before it
+  closes.
 - `VCB_Image()` holds `image_lock` throughout and `session_lock` for each
   session call only; it waits for the picture without it. Every other `VCB_*`
   entry point holds `session_lock` throughout.
@@ -182,19 +158,7 @@ What a change must not break, per binary. The reasons are in
   `MMAL_*` and `SMEM_MSG_*`, the client's own sizes `CLIENT_*`, the link's
   `LINK_*`.
 
-### videocore.audio (section 7)
-
-- The slave task owns every request and buffer. `AHIsub_Stop()` returns only
-  once every chunk is home: no hook runs and nothing is freed while the VPU can
-  still read it.
-- `AHIsub_Update()` and `AHIsub_HardwareControl()` stay interrupt-safe: store
-  and `Signal()`, nothing else.
-- `AHIsub_Disable()`/`Enable()` are asm stubs that preserve every register.
-  `lib_Version` stays 4, so AHI 4 opens the driver.
-- Programs never hang: a failed service makes the stream dead, and the timer
-  goes on pacing the hooks.
-
-### vcjpeg.datatype (section 8)
+### vcjpeg.datatype (section 6)
 
 - OM_NEW runs in the caller's task, any number at once. `codec_lock` guards
   `videocodec.library`, the count of pictures on the VPU and the idle task.
@@ -214,10 +178,6 @@ public headers reach the others only through a copy in the build tree
 
 | Path | What |
 |---|---|
-| `vchiq/include/devices/vchiq.h` | the device's public interface |
-| `vchiq/include/vchiq/` | the wire format (`vchiq_protocol.h`, size-asserted), the core's interfaces, the test-only commands (`vchiq_test.h`) |
-| `vchiq/src/vchiq_{session,rx,tx,service,bulk}.c` | the transport core, lock-free itself: the caller serialises |
-| `vchiq/src/` | `device*.c`, `unit.c`, `unit_task.c` (the one task), `irq.c` (the doorbell server), `vchiq_link.c` (up, down, the reset quiesce) |
 | `videocodec/include/libraries/` | `videocodec.h` the public contract, `videocodec_backend.h` the backend ABI; `videocodec/sfd/` the tables |
 | `videocore/src/mmal_*.c`, `smem_client.c` | the MMAL client, the `SMEM` client |
 | `videocore/src/videocore_link.c` | the link to the device: both services, the receive task |
@@ -225,8 +185,7 @@ public headers reach the others only through a copy in the build tree
 | `videocore/src/session_*.c` | one file per kind with its `struct session_ops` (`decoder`, `still`, `encoder`, `isp` the converter); `objects`, `formats` shared |
 | `videocore/src/videocore_{backend,codecs,image,gencmd}.c` | the `VCB_*` entry points, the codec table, `VCB_Image()`, the codec heap through gencmd |
 | `videocore/include/` | `*_proto.h` the wire formats; `mmal_internal.h` and `session_internal.h` are their layer's own |
-| `ahi/` | `audio_lib.c`, `audio_sub.c` (the `AHIsub_*` calls), `audio_slave.c`; `modefile.py` writes the mode file in the build |
 | `datatype/` | `vcjpeg_class.c`, `vcjpeg_recog.c` (linked on its own, entry first); `descriptor.py` writes and checks the descriptor in the build |
-| `shared/` | `image_info.c` (a still picture's header), `include/auds_proto.h` (the AUDS wire format) |
-| `tools/` | `VCInfo.c`, the examples, `VPUPlay.c`; `vcgrab/` the recorder, its muxer the `mkv` submodule (mkv-writer, tested there); `vctest/` one file per command; `common/` the rigs' shared code, never the examples' |
-| `tests/` | `run.sh` the entry point, `conftest.py`, `vchiqtest/` the VideoCore fixtures and helpers (installed to `share/vchiq-testing/`), `test_*.py` one module per area, `unit/` host-only, `baselines.json`; `.cache/`, `.venv/`, `.machine/` and `runs/` are not checked in |
+| `shared/` | `image_info.c` (a still picture's header), `include/` its header and `jpeg.h` (the JPEG markers) |
+| `tools/` | `VCInfo.c` (the video check), the examples, `VPUPlay.c`; `vcgrab/` the recorder, its muxer the `mkv` submodule (mkv-writer, tested there); `vctest/` one file per command; `common/` the rigs' shared code, never the examples' |
+| `tests/` | `run.sh` the entry point, `conftest.py`, `videocodectest/` the video fixtures and helpers (installed to `share/videocodec-testing/`), `test_*.py` one module per area, `unit/` host-only, `baselines.json`; `.cache/`, `.venv/`, `.machine/` and `runs/` are not checked in |

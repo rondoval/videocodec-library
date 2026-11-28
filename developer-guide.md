@@ -1,13 +1,14 @@
-# emu68-vchiq-library: developer guide
+# videocodec-library: developer guide
 
-For programmers using `videocodec.library` or `vchiq.device`, writing a codec
-backend, or working on the component itself. End-user installation is in
+For programmers using `videocodec.library`, writing a codec backend, or working
+on the libraries themselves. End-user installation is in
 [README.md](README.md), how it works and why in
 [docs/architecture.md](docs/architecture.md), what the firmware does as measured
 in [docs/firmware-facts.md](docs/firmware-facts.md).
 
-Sections 1 to 4 are the programming interfaces. Sections 5 to 7 are building,
-the tools and troubleshooting. Section 8 is the hardware test suite.
+Sections 1 to 3 are the programming interfaces; section 4 says where
+`vchiq.device` is. Sections 5 to 7 are building, the tools and troubleshooting.
+Section 8 is the hardware test suite.
 
 ---
 
@@ -17,11 +18,11 @@ the tools and troubleshooting. Section 8 is the hardware test suite.
 |---|---|---|
 | decode, encode or convert video and pictures | `videocodec.library` | `libraries/videocodec.h` |
 | to add a codec implementation (hardware or software) | the backend ABI | `libraries/videocodec_backend.h`, `sfd/videocodec_backend.sfd` |
-| another VideoCore firmware service (gencmd, audio, ...) | `vchiq.device` | `devices/vchiq.h` |
+| another VideoCore firmware service (gencmd, audio, ...) | `vchiq.device`, the Emu68 driver stack's (4) | `devices/vchiq.h` |
 
 The build installs the headers under `include/`, with the generated `proto`,
-`clib`, `inline` and `pragmas`; the stack's archive has them in
-`Developer/include`.
+`clib`, `inline` and `pragmas`; Kinora's archive has them in its `Developer`
+drawer.
 
 ---
 
@@ -99,7 +100,9 @@ decoder or converter keeps the samples as they are, whatever the tag.
 * **Objects.** Each side is a fixed set of `struct VCPacket` or `struct VCFrame`
   objects: the library's own (sized by `VCA_InputCount`/`InputSize`/
   `OutputCount`/`OutputSize`) or your memory, imported with
-  `VC_ImportPacket()` / `VC_ImportFrame()` before the first send. Input
+  `VC_ImportPacket()` / `VC_ImportFrame()` before the first send. A backend
+  need not take imports: both then return NULL, as they do when memory is
+  short, and the library's own objects serve. Input
   objects come to you empty as `VCIT_PacketReturned`/`VCIT_FrameReturned`,
   you fill and send them; output objects come full as `VCIT_Frame`/
   `VCIT_Packet`, you use and release them. Nothing is copied.
@@ -114,8 +117,16 @@ decoder or converter keeps the samples as they are, whatever the tag.
   with `VCA_KeepAspect` the picture keeps the place the first shape's aspect
   gave it.
 * **Changing a running session.** `VC_SetAttrsTags()` takes the output
-  geometry tags, `VCA_Bitrate` and `VCA_RequestKeyFrame`. A geometry change
-  replaces that side's objects: old pointers are invalid, re-import yours.
+  geometry tags, `VCA_Bitrate`, `VCA_RequestKeyFrame` and `VCA_Skip`. A
+  geometry change replaces that side's objects: old pointers are invalid,
+  re-import yours.
+* **Falling behind.** `VCA_Skip` (new in 0.7) lets a decoder leave pictures
+  out, neither decoded nor handed out: `VCSK_NonReference` the ones no other
+  picture is decoded from (B-pictures), `VCSK_NonKey` all but the key frames,
+  `VCSK_None` none again. A player that drops pictures because they come late
+  sets it, since dropping a picture saves its showing but not its decoding.
+  It is a hint: the VideoCore's and the HEVC block's decoders keep up and
+  ignore it, and the call succeeds.
 * **Seeking.** `VC_Flush()` drops everything the session holds: the input
   packets come back unused, and no frame from before the flush reaches you
   after it, those inside the hardware's pipeline included. Then send the
@@ -284,7 +295,7 @@ name, the row's priority and what it serves (`Flags`: `VCCF_Session`,
 `VCCF_Image`), and `Tag`, the one form of the codec the row serves (below).
 A decoder's row also lists, in `ChainOutputFormats`, the formats its
 sessions write through a converter the library puts behind the decoder
-(architecture.md 5.1): to choose a screen format before the open, look in
+(architecture.md 4.1): to choose a screen format before the open, look in
 `OutputFormats | ChainOutputFormats`, the decoder's own first, since the
 chain is a second session on the hardware. The H.265 decoder writes only its
 columns, so the screen's format comes from there.
@@ -297,7 +308,12 @@ gets what the first cannot do. When no row takes them, the best row gets the
 call anyway and refuses it with its own error. Pass
 `VCA_Backend` with a row's `Backend` name (with or without `.codec`) to pick
 one yourself. No row, no backend: `VCERR_NOBACKEND` (a session for a still
-picture's codec, say).
+picture's codec, say). To learn what a session went to, give the open
+room for `VC_BACKEND_NAME_SIZE` bytes with `VCA_BackendName` (new in 0.7): it
+writes the backend's name there, as `Backend` has it; a decoder's open writes
+the name of the converter's backend behind it at `VCA_ConverterName`, an empty
+name when there is none. A failed open writes empty names. A player says with
+them what decodes its film.
 
 **FourCCs.** A container names its codec by a FourCC: AVI's
 `biCompression`, an MP4 or QuickTime sample entry, Matroska's
@@ -333,7 +349,7 @@ reports `MMAL x.y` while its service is open, and counts `events`,
 A backend is an Exec library named `<name>.codec`, installed in
 `LIBS:videocodec/`. It implements the `VCB_*` function table of
 `sfd/videocodec_backend.sfd` (arguments in registers, base in A6); the
-header's opening comment states the contract, and architecture.md 5.2 how
+header's opening comment states the contract, and architecture.md 4.2 how
 backends are found and chosen. `videocore/` is the reference implementation;
 `tests/swconv/swconv.c`, a software converter the suite installs for one test,
 is the smallest whole backend: one row, image calls only.
@@ -373,79 +389,48 @@ is the smallest whole backend: one row, image calls only.
 
 ## 4. vchiq.device
 
-One `OpenDevice()` opens one VCHIQ service, named by fourcc, and waits for the
-VPU's answer. Up to 16 services and any number of openers work at once; a task
-shares a service by copying the opened request. Everything else is Exec I/O,
-replied to the request's port. `iovq_FourCC` 0 opens no service, for the
-information commands only.
-
-| Command | Does |
-|---|---|
-| `CMD_READ` | the next message of the service, copied into `io_Data` (`io_Actual` its size) |
-| `CMD_WRITE` | one message to the VPU (at most 4088 bytes) |
-| `NSCMD_VQ_BULKWRITE` / `NSCMD_VQ_BULKREAD` | a buffer to or from the VPU by DMA, any alignment; replied when it has moved |
-| `NSCMD_VQ_GETINFO` | the connection's counters and how it came up at this boot (`struct VchiqInfo`, `vi_Bringup`: fresh, resumed, repaired, re-initialised); where the VPU reaches host memory and at which bus address (`vi_ReachStart`, `vi_ReachEnd`, `vi_ReachBus`: what the `SMEM` service imports) and the VRAM, which needs no cache maintenance (`vi_UncachedStart`, `vi_UncachedEnd`) |
-| `CMD_FLUSH` | every queued request of the opener's service back, `IOERR_ABORTED` |
-| `NSCMD_DEVICEQUERY` | the NSD query |
-
-A gencmd exchange:
-
-```c
-struct IOVchiqReq *io = (struct IOVchiqReq *)CreateIORequest(port, sizeof(*io));
-io->iovq_FourCC = VCHIQ_FOURCC('G', 'C', 'M', 'D');
-io->iovq_Version = io->iovq_VersionMin = 1;
-if (OpenDevice((CONST_STRPTR)VCHIQ_NAME, 0, (struct IORequest *)io, 0) == 0)
-{
-    /* a copy of io with CMD_READ and a buffer, SendIO()d; then: */
-    io->iovq_Req.io_Command = CMD_WRITE;
-    io->iovq_Req.io_Data = "version";
-    io->iovq_Req.io_Length = 8;
-    DoIO((struct IORequest *)io);
-    /* WaitIO() the read: the reply is in its buffer */
-}
-```
-
-* **Order.** Writes and bulk transmits of one service go out in the order they
-  were issued, so a message and the bulk transmit that belongs to it stay
-  together. Bulk receives keep their own order and never wait behind a
-  transmit: the VPU allows four bulks in flight per direction, and may have to
-  finish a receive before it takes the next transmit.
-* **Keep reads posted.** A service holds at most 128 unread messages, then the
-  device stops reading the VPU's stream until its client reads.
-* **The connection** comes up at the first open and stays up across closes and
-  Amiga resets, which a client need not know about (architecture.md 3.2).
-  `Avail FLUSH` gives the device's memory block back, contents intact.
+`vchiq.device`, the VCHIQ transport `videocore.codec` talks through, is the
+Emu68 driver stack's: its interface (`devices/vchiq.h`, which the toolchain
+image carries) and its guide are in the stack's `emu68-vchiq-driver`, and
+`VCHIQInfo`, which the stack's installer puts in `C:`, checks the link. A
+program on `videocodec.library` never opens it. `VCTest STATUS` (6.3) prints
+its counters, read through `NSCMD_VQ_GETINFO` on a request that opens no
+service.
 
 ---
 
 ## 5. Building
 
-From the stack root, inside the container as always:
+Kinora builds this repository, as its submodule `external/videocodec-library`.
+From Kinora's root, inside the container as always:
 
 ```sh
-./scripts/docker-build.sh --target emu68-vchiq-library
+./build.sh              # emu68-common, this repository, rpivid-codec, then Kinora
+./build.sh --install    # and Kinora's install tree, install/
 ```
 
-or `./build.sh --build` for the whole stack. The whole component has one
-version, set in its root `CMakeLists.txt`. Outputs under `install/`:
+Kinora's `scripts/docker-build.sh` builds the repository in
+`build/videocodec-library` and installs it into `build/video-prefix`, where
+`rpivid-codec` finds its `VideoCodec` package; `--install` puts the binaries
+into Kinora's `install/` with the player. `KINORA_VIDEOCODEC_SOURCE_DIR` names
+another checkout (Kinora's CI builds a pull request's that way). The repository
+has one version, set in its root `CMakeLists.txt`. Outputs under
+`build/video-prefix/`:
 
 | File | What |
 |---|---|
-| `DEVS/vchiq.device` | the transport |
 | `LIBS/videocodec.library` | the API |
 | `LIBS/videocodec/videocore.codec` | the VideoCore backend |
-| `DEVS/AHI/videocore.audio`, `DEVS/AudioModes/VIDEOCORE` | the AHI driver and its modes |
 | `Classes/DataTypes/vcjpeg.datatype`, `Storage/DataTypes/VCJPEG` | the JPEG datatype and its descriptor |
 | `C/VCInfo`, `Tools/Commodities/VCGrab` and `.info` | the user's tools |
 | `Developer/Tools/VCTest`, `Developer/Tools/VPUPlay` | the test rig and the test player |
 | `Developer/Examples/videocodec/` | the examples: `VCPlay`, `VCShow`, their sources, `ReadMe` |
-| `include/libraries/videocodec.h`, `videocodec_backend.h`, `include/devices/vchiq.h` and the generated headers | the SDK |
+| `include/libraries/videocodec.h`, `videocodec_backend.h` and the generated headers; `lib/cmake/VideoCodec/` | the SDK, and the package a backend builds against |
+| `share/videocodec-testing/` | the suite's harness, for the backends' suites (8) |
 
-`./build.sh --upload` sends `DEVS`, `LIBS` and `C` with the rest, not
-`Developer/`, `Classes/` or `Storage/`: the test suite uploads those itself.
-The stack's `.lha` carries everything, and its Install script does what
-README.md, Installation, says. `Developer/` stays in the archive. The test
-suite has a build flavour of its own (8.2).
+Kinora's `.lha` carries them, and its Install script does what README.md,
+Installation, says. `Developer/` stays in the archive. The test suite has a
+build flavour of its own (8.2).
 
 ---
 
@@ -455,39 +440,31 @@ suite has a build flavour of its own (8.2).
 
 The user's check, installed to `C:`. One command per run, each ending with
 `PASS` or `FAIL`; return codes 0 PASS, 5 PASS with warnings, 10 a part not
-installed, 20 failed.
+installed, 20 failed. It calls `videocodec.library` only.
 
 | Command | Does |
 |---|---|
 | (none) | the setup in plain words, each part OK or a warning or failure with its cure |
 | `CODECS` | every backend's codec rows with their priority and what they serve |
-| `GCMD command` | one gencmd command through the device and its answer, as vcgencmd gives it; quote a command of several words (`GCMD "measure_clock arm"`). A missing reply dumps the shared window. |
-| `COMPONENTS` | which MMAL components the firmware has, and gencmd's `codec_enabled` for each codec |
-| `COUNTERS` | the connection's state and counters, where the VPU reaches host memory (`reach:`), and every backend's |
-| `DUMP` | the shared window's state, read-only, for a bug report |
+| `COUNTERS` | every backend's ABI, codecs, sessions and counters, and its codec memory |
 
-Without a command it goes through Emu68's resources and the VCHIQ node (read
-without the device), `cma.resource`, the device and how its connection came
-up, the firmware's version, temperature, throttling and under-voltage, clocks
-and `gpu_mem`, the library, its codec drivers and their codec memory. With
-`vcjpeg.datatype` installed it also classifies the header of a large baseline
-JPEG: anything but `VCJPEG` is a warning with the `S:User-Startup` line as its
-cure.
+Without a command it opens the library, lists each codec driver with its codecs
+and its codec memory, and opens and closes a session of each driver's first
+decoder: a VideoCore that does not answer fails there, with the driver stack's
+`VCHIQInfo` as the cure, since the link is its to check. With `vcjpeg.datatype`
+installed it also classifies the header of a large baseline JPEG: anything but
+`VCJPEG` is a warning with the `S:User-Startup` line as its cure.
 
-`COMPONENTS` opens a `"mmal"` service of its own. The firmware lists no
-components, so a fixed set of names is tried; each one found is created, its
-ports read (format, buffer needs, `SUPPORTED_ENCODINGS`, as many as one
-parameter carries: 96) and destroyed at once, never enabled. A port that lists
-nothing gets each pixel encoding committed in turn, and the line `commits`
-names those it took (`-` before one it refused): taking a format is not
-converting it right, which `tests/test_formats.py` checks.
+The firmware's version, temperature and throttling, gencmd
+(`VCHIQInfo GCMD "codec_enabled H264"`, say) and the shared window are
+`VCHIQInfo`'s.
 
 ### 6.2 VCPlay and VCShow
 
 The examples to copy, in the archive's `Developer/Examples/videocodec` as
 source and binary, with a `ReadMe` (`tools/examples.readme`) giving the
 one-line build. Each takes a file name, opens a window on the Workbench and
-uses nothing of the stack but the library's headers.
+uses nothing but the library's headers.
 
 `VCPlay file` is the example of sessions: an H.264 stream, or an H.265 one
 when the name ends in `.h265`, `.hevc` or `.265`, its format chosen as 2.5
@@ -508,12 +485,9 @@ command's source say what the arguments do.
 
 | Command | Does | Facts |
 |---|---|---|
-| `STATUS` | vchiq.device's connection, the Pi's timer and every backend's state and counters | `vchiq.*`, `timer.now`, `backend.N.*` |
+| `STATUS` | vchiq.device's counters (`NSCMD_VQ_GETINFO`, on a request that opens no service), the Pi's timer and every backend's state and counters | `vchiq.*`, `timer.now`, `backend.N.*` |
 | `CODECS` | the codec table; `OF fourcc ...` the library's codec of each FourCC (`VC_CodecOfTag()`) | `codec.N.*`, `of.N.*` |
 | `MARK text` | a line in the debug log, the capture's self-test | |
-| `ABANDON` | leaves the session as a crash in mid-flight would, for the repair test; needs the test hooks (8.2) | `abandon.*` |
-| `AUDIO` | silence or a tone through the firmware's audio service, driven directly; `DEST` 1 the jack, 2 HDMI0, 3 HDMI1 | `run.N.*`, `stop.N.*`, `pins.*` |
-| `AHIWALK`, `AHITONE` | a channel walk or a tone through an AHI mode | `ahi.*` |
 | `DECODE` | a decoder session over an Annex-B file, each frame's MD5 compared with ffmpeg's `framemd5`; `IMPORT n` and `IMPORTFRAMES n` (with `WIDTH`, `HEIGHT`) give it the rig's own memory as packets and frames | `decode.*`, `stream.N.*`, `ref.*`, `mismatch.N.*`, `flush.*`, `keep.*`, `resignal.*`, `open.backend.N.*` (each backend while the session is open) |
 | `IMAGE` | a still picture through `VC_DecodeImage()`; `TIMEOUT ms` its `VCA_Timeout` | `header.*`, `image.*` |
 | `TOJPEG`, `CONVERT` | the other image calls; `SOURCE x,y,w,h` the part `CONVERT` reads (`VCA_SourceRect`) | `encode_image.*`, `convert.*` |
@@ -521,7 +495,6 @@ command's source say what the arguments do.
 | `DATATYPE` | a picture through datatypes.library, as a program loads one | `datatype.*` |
 | `PAGE` | many pictures at once, a process each (64 at most), as a browser loads a page | `picture.N.*`, `page.*` |
 | `HOLD` | the free RAM the VPU reaches taken, all but `LEAVE` MiB at the end of the largest chunk, until Ctrl-C | `hold.*` |
-| `DEVICE` | vchiq.device's own commands on a GCMD service: `NSCMD_DEVICEQUERY`'s list, and `CMD_FLUSH` giving back the posted reads | `devicequery.*`, `flush.*` |
 | `PROBE name` | a codec backend's entry points called directly, past the library, with what no program may hand them: each must be refused | `probe.*` |
 | `SCREEN` | a Picasso96 screen to record: the colour bars and a moving block, or `NOISE`; `BACK n` steps it behind the others after n seconds, for three; `NATIVE` or `DEPTH 8` a screen VCGrab must refuse | `screen.*` |
 
@@ -542,7 +515,7 @@ suite slices the log.
 |---|---|
 | 0 | the command did its work and its own checks passed |
 | 5 | a check failed (`fail=` says which) |
-| 10 | the environment: a library, device, file or memory missing, or no test hooks |
+| 10 | the environment: a library, device, file or memory missing |
 | 20 | the API refused or failed (`error=`), nothing happened for five seconds, or the arguments made no sense (then no `format=` line comes out at all) |
 
 ### 6.4 VPUPlay
@@ -658,26 +631,26 @@ print facts and the host judges them (6.3).
 
 **What it needs:**
 
-* on the host: ffmpeg and ffprobe, the stack built in the suite's flavour (8.2)
-  with `install/` and `build/` in place, and the venv below;
-* on the Amiga: the project installed by the installer (the datatype's line in
+* on the host: ffmpeg and ffprobe, Kinora built in the suite's flavour (8.2)
+  with its `build/` and `install/` in place, and the venv below;
+* on the Amiga: `vchiq.device` and `VCHIQInfo` installed by the driver stack's
+  installer, the video libraries by Kinora's (the datatype's line in
   `S:User-Startup` included), `gpu_mem=192` and `videocore,mem=32` in
   config.txt, and RTG modes of the picture's size at the Workbench's depth and
   at 32 and 24 bits;
-* something on HDMI0 and the jack for the audio tests;
 * the machine's serial adapter on `/dev/ttyUSB0` for the tests that read the
   debug log.
 
-The suite builds on emu68-common's test harness (`emu68test`), which the stack
-build installs to `install/share/emu68-testing/`; `tests/run.sh` finds it there
-and makes `tests/.venv` on its first run from the harness's requirements and
+The suite builds on emu68-common's test harness (`emu68test`), which Kinora's
+build installs to `build/emu68-prefix/share/emu68-testing/`; `tests/run.sh`
+finds it there and makes `tests/.venv` on its first run from the harness's requirements and
 `tests/requirements.txt` (the suite installs nothing on the host otherwise).
 
 ```sh
 tests/run.sh material                    # the material ahead of time (optional, ten minutes)
 ```
 
-A run, from the component root:
+A run, from this repository's root:
 
 ```sh
 tests/run.sh -m smoke                   # one of every binary and path, about six minutes
@@ -688,18 +661,18 @@ tests/run.sh --collect-only -q          # the list of tests
 tests/run.sh host                       # no Amiga: the suite's own modules, the code gates, traceability
 ```
 
-The options, beside pytest's own (emu68test's plugin and `tests/vchiqtest/plugin.py`):
+The options, beside pytest's own (emu68test's plugin and `tests/videocodectest/plugin.py`):
 
 | Option | Does |
 |---|---|
 | `--server amiga-pi4\|amiga-cm4` | the machine: its amimcp entry in `~/.claude.json`, or `AMIGA_HOST` and `AMIGA_TOKEN`; also the baselines' key |
-| `--amimcp path` | the amimcp checkout, by default beside the stack's |
-| `--install-dir`, `--build-dir` | the stack's; the build dir's `CMakeCache.txt` says the flavour |
+| `--amimcp path` | the amimcp checkout, by default beside Kinora's tree |
+| `--install-dir`, `--build-dir` | Kinora's `install/` and this repository's build dir (`build/videocodec-library`), which `run.sh` gives; the build dir's `CMakeCache.txt` says the flavour |
 | `--run-dir` | where the run goes (default `tests/runs/<timestamp>`) |
 | `--no-install` | check the installed files against the install tree instead of replacing them |
 | (the install) | the machine's own files are copied to `tests/.machine/<server>/` before the first replacement, and never overwritten there |
 | `--no-reboot` | deselect the tests that reboot |
-| `--listen`, `--hands`, `--profile` | select those tiers (8.2) |
+| `--hands`, `--profile` | select those tiers (8.2) |
 | `--serial /dev/ttyUSB0\|none` | the debug log's port |
 | `--require-debug-log` | fail, not skip, without a capture |
 | `--update-baselines` | write this machine's measured values (8.5) |
@@ -712,46 +685,35 @@ first, which closes the Workbench's screen blanker.
 
 ### 8.2 Flavours and markers
 
-The suite's build is the debug flavour with the device's test hooks:
+The suite's build is the debug flavour, from Kinora's root:
 
 ```sh
-EMU68_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=off \
-    -DEMU68_DEBUG=emu68-vchiq-library -DEMU68_VCHIQ_TEST_HOOKS=ON" \
-    ./scripts/docker-build.sh --target emu68-vchiq-library
+KINORA_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=debug" ./build.sh --install
 ```
 
-`EMU68_VCHIQ_TEST_HOOKS` compiles `NSCMD_VQ_TEST_ABANDON` into `vchiq.device`:
-the next reset leaves the session as a crash would. Any other build answers it
-`IOERR_NOCMD`, and no release sets it. What the installed build enables is read
-from `CMakeCache.txt`:
+What the installed build enables is read from this repository's
+`CMakeCache.txt`:
 
 | Marker | Meaning |
 |---|---|
 | `smoke` | one of every binary and path |
 | `slow` | minutes on its own: the level probes, the whole still set, the shape change on screen |
 | `reboot` | the test or its module reboots (`C:Reboot`); `--no-reboot` deselects them; they run last |
-| `hooks` | needs `EMU68_VCHIQ_TEST_HOOKS` in the build; skipped otherwise |
 | `profile` | needs the component at the profile tier (8.6); selected only with `--profile` |
-| `listen` | someone at the machine says what they heard; selected only with `--listen` |
 | `hands` | needs someone's hands (an external reset); selected only with `--hands` |
 
-`--listen` runs what is judged by ear (the tones, the volume step, the channel
-walks): each test plays, then asks in the terminal; `n` fails it, `s` skips it.
-`--hands` runs the external resets: each test asks for Ctrl-Amiga-Amiga and
-waits for the agent to go and come back, once on a clean record and once on a
-record left dirty on purpose, which the device must recognise as the VPU's
-restart and start afresh.
+`--hands` runs the external reset during a take: the test asks for
+Ctrl-Amiga-Amiga in the terminal and waits for the agent to go and come back.
 
 A test that reads the drivers' lines asks for the `driver_log` fixture and
-skips when there is no capture or the build does not log; the first open after
-the install reboot must log `[vchiq] up:` on a debug build, or the run stops.
+skips when there is no capture or the build does not log.
 
 ### 8.3 What the modules cover
 
 | Module | What |
 |---|---|
-| `test_vcinfo.py` | VCInfo as a product: the summary, DUMP, GCMD, COMPONENTS, CODECS |
-| `test_device.py` | the connection up, the codec table with what a chain adds, a bulk transfer to the audio service, resume after an expunge; the device's own NSCMD_DEVICEQUERY and CMD_FLUSH; videocore.codec's refusals, called directly |
+| `test_vcinfo.py` | VCInfo as a product: the summary, COUNTERS, CODECS; `VC_CodecOfTag()` |
+| `test_library.py` | the codec table with what a chain adds; videocore.codec's refusals, called directly |
 | `test_decoder.py` | bit-exact decodes, the backend named or refused, the decoder's rate, two at once, a JPEG through the video decoder, flush and replay, a chain behind the decoder, the shape change, the pixel aspect; packets and frames of the program's own memory |
 | `test_players.py` | VPUPlay full screen and in a window, the colour bars, LOOP, two players, an empty stream, the shape change and pixel aspect on screen; VCPlay |
 | `test_images.py` | the image calls: decode, convert, encode; every still format, refusals, cut and big pictures, the headers; VCShow; a camera's YUYV and NV12 through the converter, a converter session's rate, an input format it refuses; an image call's timeout, part of a picture converted |
@@ -759,14 +721,12 @@ the install reboot must log `[vchiq] up:` on a debug build, or the run stops.
 | `test_colour.py` | the colour bars as BT.709 and BT.601, limited and full range, and in streams that name no colours, decoded to RGB: the bars' own colours and the colour space reported; `VCA_ColorSpace` overruling a stream; a converter session told its input's colours, and told nothing |
 | `test_choice.py` (reboot) | the backend chosen by the pictures asked for: `tests/swconv/`, a software converter built only for the suite, put in `LIBS:videocodec/` for the module |
 | `test_encoder.py` | thirty pictures with key frames, a key frame on request; RGB through the ISP: each format, scaled, gaps in the times, the end mark alone, a refused bit rate, closing while stalled, noise; the profile, level, rate control and colour space asked for |
-| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode, sound and a page of JPEGs; the saved settings, every key of them |
+| `test_vcgrab.py` | VCGrab judged from its files: the bars as a player shows them, every pixel format through the ISP, scaling, refusals, a minute of 1080p, noise at the highest bit rate, stepping back, Ctrl-C at any moment, stills, the hot keys, playback through the VPU. With `VCGRAB_DISK=Stuff:` also the writing to that disk and a recording past 2 GiB and the stop near 4 GiB; with `VCGRAB_WRAP=1` a take across the Pi's timer wrap, up to 72 minutes' wait. Also a full disk, a screen closing, screens it must refuse, and takes beside a player, a decode and a page of JPEGs; the saved settings, every key of them |
 | `test_levels.py` | the H.264 limit probes: declared levels, reference frames, rates, sizes, profiles; MJPEG sizes against ffmpeg |
-| `test_audio.py` | the audio service directly: rates, chunk and depth, STOP, two streams, outputs, channel counts; by ear the tone, the volume step, the channel walk |
-| `test_ahi.py` | videocore.audio through AHI: the three modes, the driver's log lines, two streams, a break, the services closed; by ear the 7.1 order |
 | `test_datatype.py` | vcjpeg.datatype as installed in SYS: (the install step replaced it): routing, pixels, the hand-over, the idle close, twenty pictures at once, a page of 24 MP JPEGs past the RAM the VPU reaches |
 | `test_zero_copy.py` | the VPU's reach, imports in the log, a misaligned picture through the backend's own frame, a decoder's large input packets imported and bit exact, no import trouble |
 | `test_low_memory.py` | short jobs of every kind with the RAM the VPU reaches nearly gone, held on purpose: inside their block or refused, and nothing left on the VPU, in about three minutes |
-| `test_resets.py` | the missing codec drawer, a reboot resumes, a reboot during a take, a video and sound, ABANDON then repair, the external reset by hand |
+| `test_resets.py` | the missing codec drawer, a reboot during a take and during a video, the external reset during a take by hand |
 | `test_profile.py` | the timing round (8.6) |
 
 Every module ends with `test_nothing_left`: no session, no stray message.
@@ -788,7 +748,7 @@ pytest's own `-ra` summary names every failure and skip.
 The report's header says what the firmware saw of the Pi's power after each
 module (`get_throttled`'s lasting bits): under-voltage there points at the
 supply, not the code. A Pi restart clears them, so a dip that restarts the Pi
-shows only as the restart (`VCInfo`: the VideoCore had restarted).
+shows only as the restart (`VCHIQInfo`: the VideoCore had restarted).
 
 Emu68 writes its own lines to the same UART. When it and a driver write at once
 the bytes interleave and both lines are lost, so a few percent of the lines in
@@ -817,25 +777,20 @@ are recorded, never asserted.
 ### 8.6 Timing
 
 Where a frame's time goes, for when playback is slower than it should be.
-Build the component at the profile tier: only the timing lines go to the debug
+Build at the profile tier (Kinora's root): only the timing lines go to the debug
 output, so the rates stay near a release build's.
 
 ```sh
-EMU68_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=off -DEMU68_TRACE= -DEMU68_DEBUG= -DEMU68_PROFILE=emu68-vchiq-library" \
-    ./scripts/docker-build.sh --target emu68-vchiq-library
+KINORA_CONFIGURE_ARGS="-DEMU68_DEBUG_BACKEND=pistorm -DEMU68_TIER=profile" ./build.sh --install
 tests/run.sh --profile -m profile --update-baselines
 ```
 
 Each instance reports every 2 s while it works, and once more when a session
-(`[videocore]`) or a unit (`[vchiq]`) closes, as `[prefix] slot: n=.. sum=..us
-avg=..us max=..us`. emu68test's `perf.py` reads them; emu68-common's
+closes, as `[videocore] slot: n=.. sum=..us avg=..us max=..us`. emu68test's `perf.py` reads them; emu68-common's
 `scripts/perf-report.py` reduces a capture by hand.
 
 | Slot | What it times |
 |---|---|
-| `[vchiq] rx_bulk` | a receive, from queued at the VPU to done: the DMA and the device's turnaround |
-| `[vchiq] rx_prep`, `rx_inval` | cache maintenance before and after a receive; none for buffers in the RTG card's VRAM |
-| `[vchiq] tx_clean` | cache maintenance before a transmit |
 | `[videocore] rx_parked` | a payload's wait in the client before its receive request goes out |
 | `[videocore] rx_payload` | from a buffer's header arriving to its payload landed |
 | `[videocore] out_vpu` | an output frame's whole time at the VPU, sent to back |
@@ -851,7 +806,8 @@ avg=..us max=..us`. emu68test's `perf.py` reads them; emu68-common's
 `test_profile.py` plays 300 frames six ways: the decoder alone, full screen
 paced and unpaced, a 1600x900 and a default window, full screen at 16 bits.
 Each run's rate and every slot's average go to the baselines
-(`profile.<case>.*`).
+(`profile.<case>.*`). `vchiq.device` reports slots of its own (`[vchiq]`: the
+DMA, the cache maintenance) when the driver stack's profile build is installed.
 
 ### 8.7 Adding a test
 
@@ -865,7 +821,7 @@ A test is a function in the module of its area. It asks for what it needs:
 | `driver_log`, `debuglog` | a slice of the log: `since(mark)`, `.expect()`, `.forbid()`, `.find()` |
 | `artifacts` | the test's directory |
 | `record_property` | a note for the report |
-| `operator` | `ask()`, for the listen and hands tiers |
+| `operator` | `ask()`, for the hands tier |
 
 The rules:
 
@@ -884,7 +840,7 @@ recipes; the parser's and the baselines' are emu68-common's (`tests/` there).
 Nothing binary is checked in. Everything comes from one sample, convertico's
 `sample-mp4-1080p-h264-10s.mp4` (convertico.com/samples/mp4: free for testing,
 no attribution required; 1920x1080 High, 30 fps, 300 frames with B-frames,
-x264). `tests/vchiqtest/material.py` downloads it once into `tests/.cache/source/`
+x264). `tests/videocodectest/material.py` downloads it once into `tests/.cache/source/`
 and checks its SHA-256 on every use: a changed file is an error, since the clip
 and every baseline come from it. Offline, put the file there by hand.
 
@@ -902,12 +858,12 @@ elementary stream, never from the MP4 (edit lists can drop leading frames).
 JPEG decoding is not bit-exact between decoders, so pictures are compared by
 PSNR.
 
-The rest is made on the host from `clip42` by `tests/vchiqtest/material.py`
+The rest is made on the host from `clip42` by `tests/videocodectest/material.py`
 (ffmpeg, x264, Pillow) into `tests/.cache/material-v<version>/` the first time
 a test needs it, and kept: the converter and encoder inputs, the JPEGs, the
 shape-change and pixel-aspect streams, the H.264 limit probes, the still
 pictures of every format with Pillow's decode of each as the reference
-(`tests/vchiqtest/stills.py`), and the colour-bar pattern the screenshot tests
+(`tests/videocodectest/stills.py`), and the colour-bar pattern the screenshot tests
 judge. The VPU's H.264 output keeps the limited range, 16 to 235, so a bar
 passes at either rendering. Two inputs the Amiga makes itself, once per boot:
 one frame and thirty frames of clip42 decoded to raw I420.

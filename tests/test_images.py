@@ -5,11 +5,11 @@ import time
 import numpy as np
 import pytest
 
-from vchiqtest.material import ffmpeg
-from vchiqtest.pictures import best_psnr, load_ppm, pattern, psnr, ref_rgb, rgb565_pixels, y_planes
+from videocodectest.material import ffmpeg
+from videocodectest.pictures import best_psnr, load_ppm, pattern, psnr, ref_rgb, rgb565_pixels, y_planes
 from emu68test.results import expect
 from test_encoder import H as BARS_H, W as BARS_W, bars
-from vchiqtest.tools import (assert_clean, assert_nothing_left, derived, judge_screen_bars, picture_bars, status, still_decode,
+from videocodectest.tools import (assert_clean, assert_nothing_left, derived, judge_screen_bars, picture_bars, status, still_decode,
                            still_reference, still_rgb, still_time, vctest)
 
 

@@ -173,7 +173,7 @@ ULONG format_encoding(ULONG format)
  * video_codec_encoding() - The encoding ril.video_decode's input takes for a video codec.
  * @codec: VCC_*
  *
- * Its input takes H264, MVC and MJPG only (VCInfo COMPONENTS): streams.  A
+ * Its input takes H264, MVC and MJPG only (docs/firmware-facts.md): streams.  A
  * still picture goes to ril.image_decode (image_codec_encoding()).
  *
  * Return: MMAL_ENCODING_*, 0 for one ril.video_decode does not decode.

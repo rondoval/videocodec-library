@@ -52,7 +52,7 @@ With the m68k-amigaos-gcc toolchain (bebbo's amiga-gcc), in this drawer:
 
 ../../include is the archive's Developer/include drawer, which holds
 videocodec.library's headers. The Picasso96 headers come from P96Develop
-(Aminet); the toolchain image the driver stack is built with has them.
+(Aminet); the toolchain image Kinora is built with has them.
 
 More
 ----
@@ -60,4 +60,4 @@ More
 The API's contract is the opening comment of
 Developer/include/libraries/videocodec.h. The developer guide
 (developer-guide.md) is in the source repository:
-https://github.com/rondoval/emu68-vchiq-library
+https://github.com/rondoval/videocodec-library

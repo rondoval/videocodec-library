@@ -73,10 +73,11 @@
  * The frontend keeps a backend only if the major matches its own.  A minor
  * step will add fields at the end of a structure or functions at the end of
  * the table, so either side reads a newer peer as far as its own sizeof and
- * an older one as far as the peer's Size.  1.0 is the first.
+ * an older one as far as the peer's Size.  1.0 is the first; 1.1 added
+ * VCB_OutputFrame() and VCSessionParams.CodecTag, 1.2 VCSessionParams.Skip.
  */
 #define VCB_ABI_VERSION_MAJOR 1
-#define VCB_ABI_VERSION_MINOR 1
+#define VCB_ABI_VERSION_MINOR 2
 #define VCB_ABI_VERSION ((VCB_ABI_VERSION_MAJOR << 16) | VCB_ABI_VERSION_MINOR)
 #define VCB_ABI_MAJOR(v) ((v) >> 16)
 #define VCB_ABI_MINOR(v) ((v) & 0xffffu)
@@ -105,6 +106,7 @@
 #define VCSPF_Bitrate (1UL << 0)
 #define VCSPF_RequestKeyFrame (1UL << 1)
 #define VCSPF_OutputGeometry (1UL << 2) /* OutputFormat/Width/Height/Pitch, DestRect, KeepAspect: the output set is remade */
+#define VCSPF_Skip (1UL << 3)           /* Skip (ABI 1.2): a decoder that cannot skip answers VCERR_UNSUPPORTED, which the frontend drops */
 
 /*
  * A session's tags, parsed (VCB_OpenSession(), VCB_SetAttrs()).  Each field
@@ -140,6 +142,7 @@ struct VCSessionParams
 	CONST_APTR Extradata;                /* a decoder: the codec configuration (H.264 SPS/PPS); valid in VCB_OpenSession() only */
 	ULONG ColorSpace;                    /* VCCS_*: an encoder's or a converter's input pictures; a decoder: in place of the stream's */
 	ULONG CodecTag;                      /* VCA_CodecTag: the container's FourCC for the codec, 0 none (ABI 1.1) */
+	ULONG Skip;                          /* VCA_Skip: VCSK_*, what a decoder may leave out (ABI 1.2) */
 };
 
 /* The matrix_coefficients of H.264 and H.265 (Table E-5 of both) whose matrix a VCCS_* names */

@@ -5,7 +5,7 @@
  *
  * datatypes.library calls it for every binary file it examines, ahead of the
  * descriptors with a mask: the descriptor has none, priority 0, and is added
- * after the system's (docs/architecture.md section 8).  Its context comes in
+ * after the system's (docs/architecture.md section 6).  Its context comes in
  * A0, the answer goes back in D0.  It gets the file's first 64 bytes, so
  * anything that does not start like a JPEG is refused without I/O; a JPEG's
  * markers are walked through the library's file handle, a segment at a time,

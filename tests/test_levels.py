@@ -6,8 +6,8 @@ A refusal is a fact of the hardware, pinned by the baseline (the frames it decod
 import numpy as np
 import pytest
 
-from vchiqtest.material import LEVEL_DECLARED, LEVEL_FPS, LEVEL_RATES, LEVEL_REFS, LEVEL_SIZES, describe, ffmpeg
-from vchiqtest.tools import assert_nothing_left, vctest
+from videocodectest.material import LEVEL_DECLARED, LEVEL_FPS, LEVEL_RATES, LEVEL_REFS, LEVEL_SIZES, describe, ffmpeg
+from videocodectest.tools import assert_nothing_left, vctest
 
 pytestmark = pytest.mark.slow
 
@@ -110,7 +110,7 @@ def test_mjpeg_size(device, artifacts, record_property, width, height, refused):
 
 def test_nothing_left(device, baselines, record_property):
     """After the refusals: no session left, the codec memory back."""
-    from vchiqtest.tools import codec_memory, status
+    from videocodectest.tools import codec_memory, status
     r = status(device)
     assert_nothing_left(device)
     free, total = codec_memory(r)

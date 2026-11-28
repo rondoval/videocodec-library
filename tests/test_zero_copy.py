@@ -2,8 +2,8 @@
 """Zero copy: pictures imported into the VPU (SMEM) instead of copied, read in the codec's debug log."""
 import pytest
 
-from vchiqtest.pictures import psnr
-from vchiqtest.tools import (ZC_TROUBLE, assert_nothing_left, codec_memory, status, still_decode, still_reference, still_rgb,
+from videocodectest.pictures import psnr
+from videocodectest.tools import (ZC_TROUBLE, assert_nothing_left, codec_memory, status, still_decode, still_reference, still_rgb,
                            still_time, vctest)
 
 

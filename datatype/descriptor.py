@@ -13,7 +13,7 @@ and no mask before the others; among them the lowest priority first (0 is
 the lowest: priority cannot put VCJPEG ahead of AmiKit's JFIF, which has 0
 too) and, at equal priority, the one added last first.  So VCJPEG goes ahead
 of JFIF and OS 3.2's JPEG when it is added after them (from S:User-Startup;
-docs/architecture.md section 8).
+docs/architecture.md section 6).
 
 The file is parsed back before it is kept: a malformed one fails the build.
 

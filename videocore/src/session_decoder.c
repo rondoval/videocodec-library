@@ -96,7 +96,7 @@ static BOOL h264_profile_ok(u32 profile)
  *
  * A decoder with no room says nothing: it takes its input and gives nothing,
  * so a client would wait for ever.  Its need was measured at 1080p, 720p and
- * 480p with 1 to 16 reference frames (docs/architecture.md section 9).
+ * 480p with 1 to 16 reference frames (docs/architecture.md section 7).
  * Components kept from the last picture go first if they are in the way.
  *
  * Return: 0, or VCERR_DEVMEM.

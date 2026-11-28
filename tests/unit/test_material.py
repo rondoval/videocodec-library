@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: BSD-3-Clause
-"""The material recipes (vchiqtest/material.py): the cache naming, the sample's check and the pattern recipes only."""
+"""The material recipes (videocodectest/material.py): the cache naming, the sample's check and the pattern recipes only."""
 import shutil
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from vchiqtest import material
-from vchiqtest.material import MATERIAL_VERSION, MaterialError, Material, RECIPES, cache_dir, ensure
+from videocodectest import material
+from videocodectest.material import MATERIAL_VERSION, MaterialError, Material, RECIPES, cache_dir, ensure
 
 needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is not on PATH")
 
@@ -56,7 +56,7 @@ def test_pattern_png_and_jpg(tmp_path):
 
 @needs_ffmpeg
 def test_pattern_stream_decodes_to_the_bars(tmp_path):
-    from vchiqtest.pictures import judge_bars, pattern
+    from videocodectest.pictures import judge_bars, pattern
     stream = ensure("pattern.h264", tmp_path)
     assert stream.stat().st_size > 1000
     data = material.ffmpeg("-i", str(stream), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-")

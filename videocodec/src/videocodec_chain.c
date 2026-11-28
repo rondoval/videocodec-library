@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * videocodec_chain.c - a converter behind a decoder (architecture.md 5.1).
+ * videocodec_chain.c - a converter behind a decoder (architecture.md 4.1).
  *
  * A decoder opened for an output format its row does not write runs with
  * its native output, and a converter session behind it makes the client's
@@ -208,6 +208,17 @@ struct vc_chain *chain_open(struct VideoCodecBase *base, struct VCSessionParams 
 	params->OutputCount = 0;
 	params->OutputSize = 0;
 	return chain;
+}
+
+/**
+ * chain_converter_name() - The name of the backend whose converter stands behind a session's decoder.
+ * @session: the session
+ *
+ * Return: the name, "" for a session without a chain.
+ */
+const char *chain_converter_name(const struct VCSession *session)
+{
+	return session->chain != NULL ? session->chain->converter_backend->name : "";
 }
 
 /* ---- the decoder -------------------------------------------------------------------- */

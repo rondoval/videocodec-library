@@ -6,7 +6,6 @@ traceability, which finds the tests that cover it and writes TRACEABILITY.md.
 The items, read from the sources so a new one cannot be missed:
   - videocodec.library's functions, from its SFD (the TagList and Tags forms
     of a call are one item);
-  - the commands vchiq.device's beginIO() serves;
   - the tags of libraries/videocodec.h (VCA_*);
   - the keys of VCGrab's settings file.
 
@@ -18,28 +17,25 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from emu68test.trace import Item, case_labels
+from emu68test.trace import Item
 
 TESTS = Path(__file__).resolve().parents[1]
 COMPONENT_DIR = TESTS.parent
 OUTPUT = TESTS / "TRACEABILITY.md"
-TITLE = "emu68-vchiq-library"
+TITLE = "videocodec-library"
 SFD = COMPONENT_DIR / "videocodec" / "sfd" / "videocodec.sfd"
 HEADER = COMPONENT_DIR / "videocodec" / "include" / "libraries" / "videocodec.h"
-BEGINIO = COMPONENT_DIR / "vchiq" / "src" / "device_beginio.c"
 SETTINGS = COMPONENT_DIR / "tools" / "vcgrab" / "settings.c"
 
-KNOWN_GAPS: dict[str, str] = {}   # item -> why no test covers it yet: none now
+KNOWN_GAPS: dict[str, str] = {   # item -> why no test covers it yet
+    "VCA_Skip": "the VideoCore's decoders ignore it; Kinora's suite covers it through ffmpegvideo.codec "
+                "(tests/hw/test_video.py), and a VCTest option for it is to come",
+}
 
 def library_functions() -> list[str]:
     """videocodec.library's functions, the TagList and Tags forms of a call as one name."""
     names = re.findall(r"^[A-Za-z].*?\b(VC_\w+)\(", SFD.read_text(encoding="latin-1"), re.M)
     return list(dict.fromkeys(re.sub(r"(TagList|Tags)$", "", name) for name in names))
-
-
-def device_commands() -> list[str]:
-    """The commands vchiq.device's beginIO() serves."""
-    return list(dict.fromkeys(case_labels(BEGINIO, "void beginIO(")))
 
 
 def tags() -> list[str]:
@@ -59,7 +55,6 @@ def settings_keys() -> list[str]:
 def items() -> list[Item]:
     """Every item the suite must cover."""
     found = [Item("videocodec.library", name) for name in library_functions()]
-    found += [Item("vchiq.device commands", name) for name in device_commands()]
     found += [Item("Tags", name) for name in tags()]
     found += [Item("VCGrab's settings file", f"settings: {key}") for key in settings_keys()]
     for item in found:

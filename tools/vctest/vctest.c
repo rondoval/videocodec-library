@@ -1,23 +1,16 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- * VCTest - the test rig of vchiq.device, videocodec.library, videocore.audio
- * and vcjpeg.datatype, driven by the test suite (tests/, developer-guide.md
+ * VCTest - the test rig of videocodec.library, its codec drivers and
+ * vcjpeg.datatype, driven by the test suite (tests/, developer-guide.md
  * section 8).  One command per run; its facts come out as key=value lines
  * (kv.h), the verdict last.  VCInfo shows the same state for people.
  *
  *   VCTest ?                           the commands
  *   VCTest <command> ?                 a command's template
  *
- *   STATUS                             vchiq.device's connection and counters, every backend's
+ *   STATUS                             vchiq.device's counters as the codecs leave them, every backend's
  *   CODECS                             the codec table
  *   MARK text                          a mark in the debug log (the capture self-test)
- *   ABANDON                            leave the connection as a crash would (the repair test;
- *                                      needs a vchiq.device built with VCHIQ_TEST_HOOKS)
- *   AUDIO [MS n] [DEST n] [RATE n] [CHANNELS n] [CHUNK ms] [DEPTH n] [TONE] [WALK] [VOL n] [RESTART]
- *                                      the firmware audio service driven directly
- *   AHIWALK MODE n [RATE n]            the channel walk through an AHI mode
- *   AHITONE MODE n [MS n] [RATE n] [HZ n]
- *                                      the tone through an AHI mode, start and stop timed
  *   DECODE file [REF framemd5] [OUT file] [FRAMES n] [NOHASH] [ENCODING H264|MJPEG] [VERBOSE]
  *          [FRAMED] [FPS n] [OUTFORMAT f] [FLUSH n] [BACKEND name] [EXTRADATA] [PAD n] [NOPTS] [NORATE] [PACKET n]
  *          [HASHES] [CONFIG file] [TAG fourcc] [KEEP] [RESIGNAL n] [IMPORT n] [IMPORTFRAMES n] [WIDTH n] [HEIGHT n]
@@ -38,17 +31,15 @@
  *   SCREEN WIDTH n HEIGHT n [DEPTH n] [SECONDS n] [NOISE] [BACK n]
  *                                      a Picasso96 screen to record: colour bars, a block moving, or noise
  *   HOLD LEAVE n                       all the free RAM the VPU reaches taken but n MiB, until Ctrl-C
- *   DEVICE                             vchiq.device's own commands: NSCMD_DEVICEQUERY, CMD_FLUSH
  *   PROBE name                         a codec backend's refusals, its entry points called directly
  *
  * Return codes: 0 the command did its work and its checks passed (PASS),
  * 5 a check failed, 10 the environment (a library, device, file or memory
- * missing, no test hooks), 20 the API refused or failed, or the arguments
+ * missing), 20 the API refused or failed, or the arguments
  * made no sense (then before the format line).
  *
- * Hosted CLI program (libnix).  A VCHIQ service is plain Exec I/O
- * (vchiq_client.c); a session signals this task and its items come through
- * VC_Poll().
+ * Hosted CLI program (libnix).  A session signals this task and its items
+ * come through VC_Poll().
  */
 #ifdef __INTELLISENSE__
 #include <clib/exec_protos.h>
@@ -89,15 +80,12 @@ static int do_mark(struct tool *t, LONG *args);
 
 static const struct command commands[] = {
     {"STATUS", status_template, do_status, FALSE},     {"CODECS", codecs_template, do_codecs, TRUE},
-    {"MARK", "TEXT/F", do_mark, FALSE},                {"ABANDON", abandon_template, do_abandon, FALSE},
-    {"AUDIO", audio_template, do_audio, FALSE},        {"AHIWALK", ahiwalk_template, do_ahiwalk, FALSE},
-    {"AHITONE", ahitone_template, do_ahitone, FALSE},  {"DECODE", decode_template, do_decode, TRUE},
+    {"MARK", "TEXT/F", do_mark, FALSE},                {"DECODE", decode_template, do_decode, TRUE},
     {"IMAGE", image_template, do_image, TRUE},         {"TOJPEG", tojpeg_template, do_tojpeg, TRUE},
     {"CONVERT", convert_template, do_convert, TRUE},   {"ENCODE", encode_template, do_encode, TRUE},
     {"DATATYPE", datatype_template, do_datatype, FALSE}, {"PAGE", page_template, do_page, TRUE},
     {"SCREEN", screen_template, do_screen, FALSE},
     {"HOLD", hold_template, do_hold, FALSE},
-    {"DEVICE", device_template, do_device, FALSE},
     {"PROBE", probe_template, do_probe, FALSE},
 };
 

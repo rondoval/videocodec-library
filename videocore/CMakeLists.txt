@@ -28,7 +28,7 @@ add_executable(videocore_codec
     src/videocore_codecs.c
     src/videocore_image.c
     src/videocore_gencmd.c
-    ${VCHIQ_SHARED_DIR}/image_info.c
+    ${VIDEOCODEC_SHARED_DIR}/image_info.c
 )
 target_compile_definitions(videocore_codec PRIVATE
     LIBRARY_IDSTRING="${VIDEOCORE_VERSTRING}"
@@ -36,14 +36,14 @@ target_compile_definitions(videocore_codec PRIVATE
     LIBRARY_REVISION=${PROJECT_VERSION_MINOR}
     LIBRARY_NAME="${PROJECT_NAME}"
 )
-target_compile_options(videocore_codec PRIVATE ${VCHIQ_MODULE_COMPILE_OPTIONS})
-target_link_options(videocore_codec PRIVATE ${VCHIQ_MODULE_LINK_OPTIONS})
-# vchiq.device's public header and the backend ABI only: the transport's internals are not in reach.
+target_compile_options(videocore_codec PRIVATE ${VIDEOCODEC_MODULE_COMPILE_OPTIONS})
+target_link_options(videocore_codec PRIVATE ${VIDEOCODEC_MODULE_LINK_OPTIONS})
+# vchiq.device's public header (devices/vchiq.h, from the toolchain image) and the backend ABI only.
 target_include_directories(videocore_codec PRIVATE
     include
-    ${VCHIQ_SHARED_DIR}/include
+    ${VIDEOCODEC_SHARED_DIR}/include
 )
-target_link_libraries(videocore_codec PRIVATE vchiq_headers videocodec_headers Emu68Common::common)
+target_link_libraries(videocore_codec PRIVATE videocodec_headers Emu68Common::common)
 
 emu68_module_layout(videocore_codec)
 emu68_enable_lto(videocore_codec)

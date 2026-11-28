@@ -4,9 +4,9 @@ stream of each colour space is the picture's own colours, whatever the ISP's one
 import numpy as np
 import pytest
 
-from vchiqtest.material import COLOUR_BARS
-from vchiqtest.pictures import judge_bars, pattern
-from vchiqtest.tools import assert_nothing_left, vctest
+from videocodectest.material import COLOUR_BARS
+from videocodectest.pictures import judge_bars, pattern
+from videocodectest.tools import assert_nothing_left, vctest
 
 VCCS = {"BT601": 1, "BT709": 2, "JPEG": 3, "BT709FULL": 4}  # libraries/videocodec.h
 # each clip of the bars and the colour space its session must report: the stream's own, or the guess from its rows

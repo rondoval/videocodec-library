@@ -1275,14 +1275,19 @@ int do_decode(struct tool *t, LONG *args)
 	/* a native decoder session: the backend's own packets (an access unit mostly fits whole when framed; MJPEG takes a
 	   whole picture per packet, so a JPEG file goes in one) */
 	LONG err = 0;
+	char backend_name[VC_BACKEND_NAME_SIZE];   /* what the open chose */
+	char converter_name[VC_BACKEND_NAME_SIZE]; /* and put behind the decoder */
 	d.chunk = arg_num(args, ARG_PACKET, d.framed ? 262144u : codec == VCC_MJPEG && d.file_size > 65536u ? d.file_size : 65536u);
 	ULONG rate = d.framed && !d.norate ? d.fps : 0u;
 	d.s = VC_OpenSessionTags(VCA_Codec, codec, VCA_Kind, VCK_Decoder, VCA_SigTask, (ULONG)t->waiter.task, VCA_SigMask, waiter_sigmask(&t->waiter),
 	                         VCA_Framed, (ULONG)d.framed, VCA_FrameRateNum, rate, VCA_FrameRateDen, 1, VCA_InputCount, DECODE_PACKETS,
 	                         VCA_InputSize, d.chunk, VCA_OutputFormat, d.outfmt, BACKEND_TAG(t), VCA_Extradata, (ULONG)d.config,
 	                         VCA_ExtradataSize, d.config_len, VCA_CodecTag, codec_tag, VCA_Width, d.width, VCA_Height, d.height,
-	                         COLOR_SPACE_TAG(t), VCA_ErrorPtr, (ULONG)&err, TAG_DONE);
+	                         COLOR_SPACE_TAG(t), VCA_ErrorPtr, (ULONG)&err, VCA_BackendName, (ULONG)backend_name,
+	                         VCA_ConverterName, (ULONG)converter_name, TAG_DONE);
 	kv_str("decode.session", d.s != NULL ? "open" : "refused");
+	kv_str("decode.backend", backend_name);
+	kv_str("decode.converter", converter_name);
 	if (d.s == NULL)
 	{
 		kv_num("error", err);

@@ -143,7 +143,8 @@
  * - Every buffer is a VCPacket or VCFrame object of one session.  Each side
  *   has a fixed set: the library's own (counted and sized by the buffer tags)
  *   or your memory, imported with VC_ImportPacket()/VC_ImportFrame() before
- *   the first send.
+ *   the first send.  A backend need not take imports: both then return NULL,
+ *   as they do when memory is short, and the library's own objects serve.
  * - Input: you get an empty object as a VCIT_PacketReturned or
  *   VCIT_FrameReturned item, fill it, send it; it is the library's until it
  *   comes back the same way once used.  Output: you get a full object as a VCIT_Frame or VCIT_Packet
@@ -171,7 +172,8 @@
  * - A session goes to the backend whose VC_QueryCodec() row for its codec
  *   and kind has the highest Priority (hardware above software; per codec,
  *   so one backend may be hardware for one codec and software for another),
- *   unless VCA_Backend names one.
+ *   unless VCA_Backend names one.  VCA_BackendName and VCA_ConverterName
+ *   have the open say which it went to.
  * - A decoder asked for an output format its row does not write gets a
  *   converter behind it, inside the same session: the decoder runs natively,
  *   the converter (opened when the stream's shape is known) makes your
@@ -194,6 +196,7 @@
 /* Backends: LIBS:videocodec/<name>.codec (writing one: libraries/videocodec_backend.h) */
 #define VIDEOCODEC_BACKEND_DRAWER "videocodec"
 #define VIDEOCODEC_BACKEND_SUFFIX ".codec"
+#define VC_BACKEND_NAME_SIZE 32 /* a backend's file name with its NUL: VCCodecInfo.Backend, VCA_BackendName */
 
 typedef long long VCTime; /* a timestamp in microseconds */
 #define VC_TIME_UNKNOWN ((VCTime)1 << 63)
@@ -318,6 +321,11 @@ typedef long long VCTime; /* a timestamp in microseconds */
 #define VCCS_BT709 2      /* limited range, 16 to 235 */
 #define VCCS_JPEG 3       /* BT.601, full range: what the hardware converter makes of RGB, on the VideoCore */
 #define VCCS_BT709_Full 4 /* BT.709, full range */
+
+/* What a decoder may leave out (VCA_Skip) */
+#define VCSK_None 0         /* every picture */
+#define VCSK_NonReference 1 /* the pictures no other is decoded from (B-pictures) */
+#define VCSK_NonKey 2       /* all but the key frames */
 
 /* Rate control (VCA_RateControl) */
 #define VCRC_Default 0
@@ -449,7 +457,7 @@ struct VCCodecInfo
 	ULONG MaxWidth, MaxHeight;
 	ULONG MaxLevel;    /* H.264 level times ten (42 = 4.2): the highest it keeps up with at the level's rates; 0 unknown */
 	ULONG OutputFormats; /* VCF_MASK() of each VCF_* a decoder or converter writes; 0 for an encoder */
-	UBYTE Backend[32]; /* the backend's name, for VCA_Backend */
+	UBYTE Backend[VC_BACKEND_NAME_SIZE]; /* the backend's name, for VCA_Backend */
 	LONG Priority;     /* 50 hardware, 0 software (VCB_PRIORITY_*): the row of the highest gets the session */
 	ULONG Flags;       /* VCCF_*: what the row serves */
 	ULONG InputFormats; /* VCF_MASK() of each VCF_* an encoder or converter reads, others refused; 0 for a decoder */
@@ -480,7 +488,7 @@ struct VCInfo
 {
 	ULONG Size;       /* set it to sizeof(struct VCInfo) before the call */
 	ULONG ABIVersion; /* of the backend interface */
-	UBYTE Backend[32];
+	UBYTE Backend[VC_BACKEND_NAME_SIZE];
 	ULONG Sessions;             /* open now */
 	UBYTE Interface[32];        /* the hardware's own interface and its version while one is open ("MMAL 0.2"), else empty */
 	struct VCCounter *Counters; /* in: room for MaxCounters, or NULL */
@@ -529,6 +537,9 @@ struct VCSession; /* opaque */
 #define VCA_SigTask (VCA_Base + 18)  /* struct Task * to signal [the opener]; also with VC_SetAttrsTags(), to hand the session to another task */
 #define VCA_ErrorPtr (VCA_Base + 32) /* LONG *: gets the VCERR_* when an open or an image call fails */
 #define VCA_Backend (VCA_Base + 31)  /* STRPTR: this backend, by its VCCodecInfo.Backend name, with or without .codec [the one with the codec's highest-priority row] */
+/* What the open chose (new in 0.7): room for VC_BACKEND_NAME_SIZE bytes each, which the open fills, an empty name when it fails */
+#define VCA_BackendName (VCA_Base + 42)   /* UBYTE *: gets the name of the backend serving the session, as VCCodecInfo.Backend has it */
+#define VCA_ConverterName (VCA_Base + 43) /* UBYTE *: a decoder's open: gets the name of the converter's backend put behind it, empty for none */
 
 /* Input pictures: encoder, converter */
 #define VCA_Width (VCA_Base + 3)       /* pixels; for a decoder, what imported native frames are checked against */
@@ -547,7 +558,7 @@ struct VCSession; /* opaque */
 #define VCA_OutputFormat (VCA_Base + 7) /* VCF_* [decoder: I420 at the stream's size, no scaling] */
 #define VCA_OutputWidth (VCA_Base + 8)  /* pixels [the source's] */
 #define VCA_OutputHeight (VCA_Base + 9) /* rows [the source's] */
-#define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel] */
+#define VCA_OutputPitch (VCA_Base + 10) /* bytes per row [width x bytes per pixel, rounded up to the backend's row: the VideoCore's whole groups of 32 pixels] */
 /*
  * VCA_DestRect: where the picture goes in the frame, and how large.  A place
  * other than the frame's top left needs a packed pixel format (the planes of
@@ -581,6 +592,12 @@ struct VCSession; /* opaque */
 #define VCA_Framed (VCA_Base + 20)        /* BOOL: each packet holds whole pictures, marked VCPF_FrameStart/End [FALSE: any chunks] */
 #define VCA_Extradata (VCA_Base + 29)     /* APTR: codec configuration (H.264 SPS/PPS, Annex-B) when not in the stream; read by the open only.  The open refuses a stream the hardware has no memory for (VCERR_DEVMEM); without it the first packet does */
 #define VCA_ExtradataSize (VCA_Base + 30) /* its bytes */
+/*
+ * VCA_Skip: pictures a decoder that falls behind may leave out, not decoded and not handed out,
+ * so the client gets fewer pictures (new in 0.7; also with VC_SetAttrsTags()).  A hint: a
+ * decoder that cannot skip (the hardware ones) ignores it, and VC_SetAttrsTags() succeeds.
+ */
+#define VCA_Skip (VCA_Base + 41) /* VCSK_* [VCSK_None] */
 
 /* Encoder (VCA_Bitrate and VCA_RequestKeyFrame also with VC_SetAttrsTags() while running) */
 #define VCA_FrameRateNum (VCA_Base + 21)    /* frame rate of the input; a framed decoder assumes it too [unknown] */

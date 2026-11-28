@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from vchiqtest.material import ffmpeg
-from vchiqtest.pictures import judge_bars, key_frames, pattern, psnr, raw_bars, y_planes
-from vchiqtest.tools import assert_nothing_left, derived, vctest
+from videocodectest.material import ffmpeg
+from videocodectest.pictures import judge_bars, key_frames, pattern, psnr, raw_bars, y_planes
+from videocodectest.tools import assert_nothing_left, derived, vctest
 from test_vcgrab import rgb_picture, stream_fields
 
 W, H = 640, 360     # the bars through the ISP

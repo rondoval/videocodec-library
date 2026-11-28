@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from vchiqtest.material import ffmpeg
-from vchiqtest.pictures import psnr, y_planes
-from vchiqtest.tools import assert_nothing_left, vctest
+from videocodectest.material import ffmpeg
+from videocodectest.pictures import psnr, y_planes
+from videocodectest.tools import assert_nothing_left, vctest
 
 CHAINED_LEAST_DB = 40.0  # the chain's luma against ffmpeg's: the converter only repacks it, a wrong picture scores 10 to 15
 
@@ -21,11 +21,12 @@ def decode(device, material, clip, extra="", ref=True, timeout=180):
 @pytest.mark.smoke
 @pytest.mark.covers("VC_OpenSession", "VC_CloseSession", "VC_SendPacket", "VC_Poll", "VC_ReleaseFrame", "VCA_Codec",
                     "VCA_Kind", "VCA_SigTask", "VCA_SigMask", "VCA_InputCount", "VCA_InputSize", "VCA_FrameRateNum",
-                    "VCA_FrameRateDen", "VCA_ErrorPtr", "NSCMD_VQ_BULKREAD")
+                    "VCA_FrameRateDen", "VCA_ErrorPtr", "VCA_BackendName", "VCA_ConverterName", "NSCMD_VQ_BULKREAD")
 def test_bit_exact(device, material):
-    """Three hundred frames of 1080p, every one the same as ffmpeg's."""
+    """Three hundred frames of 1080p, every one the same as ffmpeg's, from the VideoCore's decoder with nothing behind it."""
     r = decode(device, material, "clip42.h264")
     assert r.passed, r.kv.get("fail")
+    assert r.kv.get("decode.backend") == "videocore.codec" and r.kv.get("decode.converter") == ""
     assert r.num("decode.frames") == 300 and r.num("decode.width") == 1920
     assert r.num("ref.compared") == 300 and r.num("ref.mismatches") == 0
 
@@ -126,7 +127,7 @@ def test_flush_replays(device, material, extra):
     assert r.num("flush.stale") == 0 and r.num("flush.untimed") == 0
 
 
-@pytest.mark.covers("VCA_OutputFormat")
+@pytest.mark.covers("VCA_OutputFormat", "VCA_ConverterName")
 def test_chained_output(device, material, record_property):
     """YUYV, which the H.264 decoder does not write itself: the library puts the VideoCore's converter behind it (the
     chain, as VCCodecInfo.ChainOutputFormats lists it), and the first picture's luma is ffmpeg's."""
@@ -134,6 +135,7 @@ def test_chained_output(device, material, record_property):
     r = decode(device, material, "clip42.h264", f"OUTFORMAT YUYV FRAMES 1 OUT {out}", ref=False, timeout=60)
     try:
         assert r.passed, r.kv.get("fail")
+        assert r.kv.get("decode.converter") == "videocore.codec", f"converter: {r.kv.get('decode.converter')!r}"
         data = device.download(out)
     finally:
         device.delete(out)

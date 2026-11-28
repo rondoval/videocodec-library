@@ -164,9 +164,9 @@ static BOOL backend_open(struct VideoCodecBase *base, struct vc_backend *backend
 {
 	struct ExecBase *SysBase = base->SysBase;
 
-	char path[sizeof(VIDEOCODEC_BACKEND_DRAWER "/") + VC_BACKEND_NAME_MAX];
+	char path[sizeof(VIDEOCODEC_BACKEND_DRAWER "/") + VC_BACKEND_NAME_SIZE];
 	strlcpy(path, VIDEOCODEC_BACKEND_DRAWER "/", sizeof(path));
-	strlcpy(path + sizeof(VIDEOCODEC_BACKEND_DRAWER "/") - 1u, backend->name, VC_BACKEND_NAME_MAX);
+	strlcpy(path + sizeof(VIDEOCODEC_BACKEND_DRAWER "/") - 1u, backend->name, VC_BACKEND_NAME_SIZE);
 
 	backend->library = OpenLibrary((CONST_STRPTR)path, 0);
 	if (backend->library == NULL)
@@ -213,7 +213,7 @@ static BOOL backend_handshake(struct vc_backend *backend, ULONG *rows)
 static void add_backend(struct VideoCodecBase *base, const char *name)
 {
 	struct ExecBase *SysBase = base->SysBase;
-	if (strlen(name) >= VC_BACKEND_NAME_MAX || backend_by_name(base, name) != NULL)
+	if (strlen(name) >= VC_BACKEND_NAME_SIZE || backend_by_name(base, name) != NULL)
 		return;
 
 	struct vc_backend *backend = AllocVec(sizeof(*backend), MEMF_PUBLIC | MEMF_CLEAR);

@@ -14,7 +14,7 @@ import numpy as np
 
 from emu68test.results import Result
 
-from .machine import VchiqDevice
+from .machine import VideoCodecDevice
 from .material import Material
 from .pictures import pattern, still_pixels
 
@@ -23,17 +23,17 @@ ZC_TROUBLE = (r"refused", r"never answered", r"never reported released", r"could
               r"matched nothing", r"SMEM service is gone", r"zero-copy buffer back at offset")
 
 
-def vctest(device: VchiqDevice, args: str, timeout: float = 120) -> Result:
+def vctest(device: VideoCodecDevice, args: str, timeout: float = 120) -> Result:
     """VCTest with @args, run to its end."""
     return device.run("VCTest", args, timeout)
 
 
-def vpuplay(device: VchiqDevice, args: str, timeout: float = 120) -> Result:
+def vpuplay(device: VideoCodecDevice, args: str, timeout: float = 120) -> Result:
     """VPUPlay with @args, run to its end."""
     return device.run("VPUPlay", args, timeout)
 
 
-def status(device: VchiqDevice) -> Result:
+def status(device: VideoCodecDevice) -> Result:
     """VCTest STATUS."""
     r = vctest(device, "STATUS", 30)
     assert r.passed, f"STATUS failed: {r.kv.get('fail')}"
@@ -57,7 +57,7 @@ def assert_clean(r: Result, services: int | None = None) -> None:
         assert r.num("vchiq.services") == services, f"{r.num('vchiq.services')} services open, {services} before"
 
 
-def assert_nothing_left(device: VchiqDevice) -> None:
+def assert_nothing_left(device: VideoCodecDevice) -> None:
     """The last test of a module: STATUS clean."""
     assert_clean(status(device))
 
@@ -83,7 +83,7 @@ FREE = (  # every free chunk of a MiB or more that the VPU reaches, as bytes:sta
     "c=c2d(import(d2c(c,4),4)); end; end; ml=nxt; end; call permit(); return out"
 )
 
-def free_chunks(device: VchiqDevice) -> list[tuple[int, int, int]]:
+def free_chunks(device: VideoCodecDevice) -> list[tuple[int, int, int]]:
     """Every free chunk the VPU reaches, largest first: (bytes, start, its block's end)."""
     rc, text = device.ami.arexx(FREE)
     assert rc == 0, f"ARexx: {rc}: {text}"
@@ -91,7 +91,7 @@ def free_chunks(device: VchiqDevice) -> list[tuple[int, int, int]]:
 
 
 @contextmanager
-def held(device: VchiqDevice, leave: int):
+def held(device: VideoCodecDevice, leave: int):
     """All the free RAM the VPU reaches taken but @leave MiB, at the end of the largest chunk: where its block ends."""
     device.flush()  # the DMA pool keeps arenas between sessions: each level asks for its memory afresh
     best, _, top = free_chunks(device)[0]
@@ -116,7 +116,7 @@ DERIVED = {  # name -> the VCTest DECODE arguments that write it from clip42
 }
 
 
-def derived(device: VchiqDevice, material: Material, name: str) -> str:
+def derived(device: VideoCodecDevice, material: Material, name: str) -> str:
     """RAM:hw/<name>, decoded from clip42 on the Amiga once per boot (a raw picture, or 30 of them)."""
     remote = f"RAM:hw/{name}"
     if remote not in device.ram_known:
@@ -129,7 +129,7 @@ def derived(device: VchiqDevice, material: Material, name: str) -> str:
 
 # -- stills
 
-def still_decode(device: VchiqDevice, material: Material, name: str, fmt: str = "RGBA32", size: tuple[int, int] | None = None,
+def still_decode(device: VideoCodecDevice, material: Material, name: str, fmt: str = "RGBA32", size: tuple[int, int] | None = None,
                  extra: str = "", fetch: bool = True, misalign: bool = False) -> tuple[int, int, Result, bytes | None]:
     """VCTest IMAGE of a still: (VC_DecodeImage's code, its microseconds, the result, the picture's bytes or None)."""
     remote = material.ram(f"stills/{name}")
@@ -143,7 +143,7 @@ def still_decode(device: VchiqDevice, material: Material, name: str, fmt: str = 
     return code, us, r, raw
 
 
-def still_time(device: VchiqDevice, material: Material, name: str, fmt: str, misalign: bool = False, times: int = 3) -> int:
+def still_time(device: VideoCodecDevice, material: Material, name: str, fmt: str, misalign: bool = False, times: int = 3) -> int:
     """The image call's microseconds for a still, the best of @times runs (the first call of a program pays for setup)."""
     best = None
     for _ in range(times):
@@ -165,7 +165,7 @@ def still_rgb(fmt: str, raw: bytes, w: int, h: int) -> tuple[np.ndarray, np.ndar
     return still_pixels(fmt, w, h, raw)
 
 
-def dt_load(device: VchiqDevice, material: Material, name: str, out: bool = False) -> tuple[str | None, int | None, int, str | None, bytes | None]:
+def dt_load(device: VideoCodecDevice, material: Material, name: str, out: bool = False) -> tuple[str | None, int | None, int, str | None, bytes | None]:
     """VCTest DATATYPE of a still: (descriptor, NewDTObject's code, microseconds, the pixels' sum, the PPM's bytes or None)."""
     remote = material.ram(f"stills/{name}")
     ppm = "RAM:hw/dt.ppm"
@@ -179,7 +179,7 @@ def dt_load(device: VchiqDevice, material: Material, name: str, out: bool = Fals
     return desc, code, us, total, raw
 
 
-def dt_page(device: VchiqDevice, material: Material, names: tuple[str, ...], copies: int) -> Result:
+def dt_page(device: VideoCodecDevice, material: Material, names: tuple[str, ...], copies: int) -> Result:
     """VCTest PAGE: @copies of each still loaded at once, a process each."""
     files = " ".join(material.ram(f"stills/{name}") for name in names)
     return vctest(device, f"PAGE {files} COPIES {copies}", 180)
@@ -201,7 +201,7 @@ def picture_bars(x: int, y: int, w: int, h: int) -> list:
     return [type(b)(x + b.x * sx, y + b.y * sy, b.w * sx, b.h * sy, b.rgb) for b in bars]
 
 
-def judge_screen_bars(device: VchiqDevice, bars: list, name: str, tolerance: float = 8, max_std: float = 6) -> list[str]:
+def judge_screen_bars(device: VideoCodecDevice, bars: list, name: str, tolerance: float = 8, max_std: float = 6) -> list[str]:
     """Sample a patch at each bar's centre on the frontmost screen; the problems in plain words (empty: fine)."""
     device.wake()  # the screen blanker would be in front
     problems = []

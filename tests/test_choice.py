@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-"""How videocodec.library chooses a backend by the pictures asked for (architecture.md 5.2): with a second converter
+"""How videocodec.library chooses a backend by the pictures asked for (architecture.md 4.2): with a second converter
 installed, the software one of tests/swconv/ at software priority, a format only it writes goes to it, one both write
 to the VideoCore's, and a program may still name it.  The backend is put in LIBS:videocodec/ for this module and taken
 out again, each with a reboot: the library reads the drawer once."""
@@ -9,8 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vchiqtest.pictures import best_psnr, ref_rgb
-from vchiqtest.tools import backend, status, vctest
+from videocodectest.pictures import best_psnr, ref_rgb
+from videocodectest.tools import backend, status, vctest
 
 SWCONV = "LIBS:videocodec/swconv.codec"
 W, H = 800, 600
@@ -23,9 +23,9 @@ pytestmark = pytest.mark.reboot
 @pytest.fixture(scope="module")
 def swconv(request, device):
     """swconv.codec in LIBS:videocodec/ from the build tree, the library made to read the drawer again; out at the end."""
-    local = Path(request.config.getoption("--build-dir"), "emu68-vchiq-library", "tests", "swconv", "swconv.codec")
+    local = Path(request.config.getoption("--build-dir"), "tests", "swconv", "swconv.codec")
     if not local.is_file():
-        pytest.skip(f"no {local}: build the emu68-vchiq-library target")
+        pytest.skip(f"no {local}: build Kinora (scripts/docker-build.sh)")
     device.upload(local, SWCONV)
     time.sleep(PFS3_SETTLE)
     device.reboot()

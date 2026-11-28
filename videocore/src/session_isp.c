@@ -222,8 +222,8 @@ LONG shape_resolve(struct vc_session *session)
 		return VCERR_BADSTATE;
 
 	u32 pitch = params->OutputPitch;
-	if (pitch == 0)
-		pitch = format_is_planar(format) ? ALIGN_UP(width, isp_row_pixels(format)) : width * bytes_per_pixel;
+	if (pitch == 0) /* rows of whole groups: a picture of another width gets a wider row (720 in 736) */
+		pitch = ALIGN_UP(width, isp_row_pixels(format)) * (format_is_planar(format) ? 1 : bytes_per_pixel);
 
 	u32 row_pixels = pitch / bytes_per_pixel; /* picture_geometry() refuses a pitch of part pixels */
 	if (row_pixels < width || row_pixels % isp_row_pixels(format) != 0 || (height & 1u) != 0)
